@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pagewise</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="assets/pagewise-logo.svg" alt="" />
+          </div>
+          <div>
+            <h1>Pagewise</h1>
+            <p>Local intelligence</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="newChatButton" class="icon-button" type="button" aria-label="Start a new chat" title="New chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <span id="connectionDot" class="connection-dot" title="Checking Ollama"></span>
+        </div>
+      </header>
+
+      <main id="conversation" class="conversation" aria-live="polite">
+        <section id="emptyState" class="empty-state">
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5.5 4v-4.6A2.5 2.5 0 0 1 4 13.9V5.5Z"/>
+              <path d="M8 8h8M8 11.5h5"/>
+            </svg>
+          </div>
+          <h2>Ask about this page</h2>
+          <p>Pagewise sends the page’s rendered text, controls, and your prompt directly to Ollama on this computer.</p>
+          <div class="suggestions">
+            <button class="suggestion" type="button">Summarize what’s on this page</button>
+            <button class="suggestion" type="button">Find the most important details</button>
+            <button class="suggestion" type="button">Explain this page in simple terms</button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="composer-wrap">
+        <div id="siteAccessBanner" class="site-access-banner" role="status">
+          <div class="site-access-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="5" y="10" width="14" height="10" rx="3"/>
+              <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/>
+            </svg>
+          </div>
+          <div class="site-access-copy">
+            <strong id="siteAccessTitle">Checking page access…</strong>
+            <span id="siteAccessDescription">Pagewise only asks for the site you are viewing.</span>
+          </div>
+          <button id="allowSiteButton" class="allow-site-button" type="button" disabled>Allow</button>
+        </div>
+        <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+        <form id="chatForm" class="composer">
+          <textarea
+            id="promptInput"
+            rows="1"
+            maxlength="8000"
+            placeholder="Ask anything about this page"
+            aria-label="Message Pagewise"
+          ></textarea>
+          <div class="composer-controls">
+            <div class="selectors">
+              <label class="select-chip" title="Context tool">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+                </svg>
+                <select id="toolSelect" aria-label="Select tool">
+                  <option value="dom">DOM</option>
+                </select>
+              </label>
+              <label class="select-chip model-chip" title="Ollama model">
+                <span class="ollama-mark" aria-hidden="true">●</span>
+                <select id="modelSelect" aria-label="Select Ollama model">
+                  <option value="">Loading models…</option>
+                </select>
+              </label>
+              <label class="select-chip thinking-chip" title="Show or hide model thinking">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.5 18h5M10 21h4"/>
+                  <path d="M8.2 15.3A7 7 0 1 1 15.8 15.3c-.8.6-1.3 1.4-1.3 2.2h-5c0-.8-.5-1.6-1.3-2.2Z"/>
+                </svg>
+                <select id="thinkingSelect" aria-label="Thinking mode">
+                  <option value="on">Think on</option>
+                  <option value="off">Think off</option>
+                </select>
+              </label>
+            </div>
+            <button id="sendButton" class="send-button" type="submit" aria-label="Send message" disabled>
+              <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/>
+              </svg>
+              <svg class="stop-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="1"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+        <p class="privacy-note">
+          <button id="previewContextButton" class="preview-context-button" type="button" disabled>
+            Preview page context
+          </button>
+          <span aria-hidden="true">·</span>
+          Your page content stays on this device.
+        </p>
+      </footer>
+    </div>
+
+    <dialog id="contextPreviewDialog" class="context-preview-dialog">
+      <div class="preview-header">
+        <div>
+          <span class="preview-eyebrow">DOM tool</span>
+          <h2>Page context preview</h2>
+        </div>
+        <button id="closePreviewButton" class="icon-button" type="button" aria-label="Close preview">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18"/>
+          </svg>
+        </button>
+      </div>
+      <p class="preview-description">
+        This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.
+      </p>
+      <div id="previewStats" class="preview-stats"></div>
+      <pre id="contextPreviewContent" class="context-preview-content">Capture a page to preview its context.</pre>
+      <div class="preview-actions">
+        <button id="refreshPreviewButton" class="secondary-button" type="button">Refresh</button>
+        <button id="donePreviewButton" class="primary-button" type="button">Done</button>
+      </div>
+    </dialog>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
