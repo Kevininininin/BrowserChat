@@ -63,24 +63,26 @@
         <div id="errorBanner" class="error-banner" role="alert" hidden></div>
         <form id="chatForm" class="composer">
           <div class="composer-input">
-            <div id="contextChip" class="context-chip" hidden>
+            <div
+              id="promptInput"
+              class="prompt-input"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Message Pagewise"
+              data-placeholder="Ask anything"
+            ></div>
+            <div id="contextChip" class="context-chip" contenteditable="false" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9"/>
                 <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
               </svg>
               <span>DOM</span>
-              <button id="chipPreviewButton" class="chip-preview-button" type="button">Preview</button>
-              <button id="removeContextButton" class="chip-remove-button" type="button" aria-label="Remove DOM context">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
-              </button>
+              <div class="chip-menu" role="menu" aria-label="DOM context options">
+                <button id="chipPreviewButton" type="button" role="menuitem">Preview</button>
+                <button id="removeContextButton" class="chip-menu-destructive" type="button" role="menuitem">Remove</button>
+              </div>
             </div>
-            <textarea
-              id="promptInput"
-              rows="1"
-              maxlength="8000"
-              placeholder="Ask anything"
-              aria-label="Message Pagewise"
-            ></textarea>
           </div>
           <div class="composer-controls">
             <div class="selectors">
@@ -143,7 +145,7 @@
           </svg>
         </button>
       </div>
-      <p class="preview-description">
+      <p id="previewDescription" class="preview-description">
         This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.
       </p>
       <div id="previewStats" class="preview-stats"></div>

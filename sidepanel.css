@@ -246,6 +246,71 @@ select {
   white-space: pre-wrap;
 }
 
+.processing-status {
+  margin: 0 0 13px;
+  color: #60605c;
+}
+
+.processing-status[hidden] {
+  display: none;
+}
+
+.processing-label {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.processing-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.processing-info-button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: #777773;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid #aaa9a4;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.processing-info-button:hover,
+.processing-info-button[aria-expanded="true"] {
+  color: #171716;
+  background: #f1f1ee;
+  border-color: #777773;
+}
+
+.processing-info-button:focus-visible {
+  outline: 2px solid #4c9a67;
+  outline-offset: 2px;
+}
+
+.processing-info {
+  max-width: 310px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: #60605c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  background: #f1f1ee;
+  border: 1px solid #e2e2dd;
+  border-radius: 8px;
+}
+
+.processing-info[hidden] {
+  display: none;
+}
+
 .thinking-panel {
   margin: 0 0 13px;
   color: #60605c;
@@ -389,12 +454,17 @@ select {
   border-radius: 5px;
 }
 
-.assistant .message pre {
+.assistant .message .code-block {
   margin: 0.85em 0 1em;
-  padding: 12px;
-  overflow-x: auto;
   background: #242422;
   border-radius: 11px;
+  overflow: hidden;
+}
+
+.assistant .message pre {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
 }
 
 .assistant .message pre code {
@@ -403,6 +473,44 @@ select {
   line-height: 1.5;
   white-space: pre;
   background: transparent;
+}
+
+.assistant .message .table-scroll {
+  max-width: 100%;
+  margin: 0.85em 0 1em;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.assistant .message table {
+  width: 100%;
+  min-width: 520px;
+  border-spacing: 0;
+  border-collapse: separate;
+  font-size: 0.94em;
+}
+
+.assistant .message th,
+.assistant .message td {
+  padding: 9px 11px;
+  vertical-align: top;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.assistant .message th {
+  font-weight: 650;
+  background: #f1f1ed;
+}
+
+.assistant .message th:last-child,
+.assistant .message td:last-child {
+  border-right: 0;
+}
+
+.assistant .message tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .assistant .message hr {
@@ -448,6 +556,7 @@ select {
 }
 
 .composer-wrap {
+  position: relative;
   z-index: 2;
   padding: 0 12px 10px;
   background: linear-gradient(180deg, transparent 0, var(--bg) 22px);
@@ -580,36 +689,38 @@ select {
 }
 
 .composer-input {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 6px;
+  min-height: 29px;
 }
 
 #promptInput {
   display: block;
-  flex: 1 1 180px;
-  width: auto;
-  min-width: 120px;
+  width: 100%;
+  min-height: 29px;
   max-height: 160px;
   padding: 3px 4px 10px;
+  overflow-y: auto;
   color: var(--text);
   line-height: 1.45;
-  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   background: transparent;
   border: 0;
   outline: 0;
 }
 
-#promptInput::placeholder {
+#promptInput:empty::before {
+  content: attr(data-placeholder);
   color: #9b9b96;
+  pointer-events: none;
 }
 
 .context-chip {
   display: inline-flex;
+  position: relative;
+  vertical-align: middle;
   align-items: center;
   height: 27px;
-  margin-bottom: 6px;
+  margin: 0 3px;
   padding: 0 7px;
   gap: 5px;
   color: #245f39;
@@ -624,8 +735,28 @@ select {
   display: none;
 }
 
-.context-chip > svg,
-.chip-remove-button svg {
+.reply-context-chip {
+  margin: 0 0 9px 4px;
+  cursor: default;
+}
+
+.reply-context-chip.context-chip-unavailable {
+  color: #71716c;
+  background: #f1f1ee;
+  border-color: #d9d9d4;
+}
+
+.context-chip::before {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 126px;
+  height: 8px;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.context-chip > svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -634,43 +765,84 @@ select {
   stroke-width: 1.6;
 }
 
-.chip-preview-button,
-.chip-remove-button {
-  color: inherit;
+.chip-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: grid;
+  width: 126px;
+  padding: 5px;
+  gap: 2px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: var(--surface);
+  border: 1px solid #deded9;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgb(0 0 0 / 14%);
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+}
+
+.chip-menu.is-open {
+  z-index: 100;
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.chip-menu button {
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   cursor: pointer;
 }
 
-.chip-preview-button {
-  max-width: 0;
-  padding: 0;
-  overflow: hidden;
-  font-size: 10px;
-  opacity: 0;
-  transition: max-width 140ms ease, opacity 140ms ease;
+.chip-menu button:hover,
+.chip-menu button:focus-visible {
+  background: var(--surface-hover);
 }
 
-.context-chip:hover .chip-preview-button,
-.context-chip:focus-within .chip-preview-button {
-  max-width: 52px;
-  padding-left: 3px;
-  opacity: 1;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.chip-menu button:disabled {
+  color: #aaa9a3;
+  cursor: not-allowed;
+  background: transparent;
 }
 
-.chip-remove-button {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 5px;
+.reply-chip-menu {
+  width: 176px;
 }
 
-.chip-remove-button:hover {
-  background: rgb(36 95 57 / 10%);
+.chip-menu-note {
+  display: block;
+  padding: 2px 8px 6px;
+  color: #8a8983;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.chip-menu-note[hidden] {
+  display: none;
+}
+
+.chip-menu .chip-menu-destructive {
+  color: #c83232;
+}
+
+.chip-menu .chip-menu-destructive:hover,
+.chip-menu .chip-menu-destructive:focus-visible {
+  color: #a92323;
+  background: #fff0f0;
 }
 
 .composer-controls {
@@ -834,7 +1006,12 @@ select {
 }
 
 .thinking-chip select {
-  max-width: 75px;
+  width: max-content;
+  max-width: none;
+}
+
+.thinking-chip {
+  flex: 0 0 auto;
 }
 
 .ollama-mark {
@@ -1045,10 +1222,6 @@ select {
 
   .model-chip select {
     max-width: 88px;
-  }
-
-  .thinking-chip select {
-    max-width: 72px;
   }
 
   .conversation {

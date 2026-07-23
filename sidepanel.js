@@ -1,5 +1,6 @@
 const OLLAMA_BASE_URL = "http://localhost:11434";
 const MAX_HISTORY_MESSAGES = 12;
+const MAX_MEMORIZED_DOM_ATTACHMENTS = 3;
 const CONTEXT_LIMITS = {
   viewportTextCharacters: 12_000,
   pageTextCharacters: 28_000,
@@ -21,6 +22,7 @@ const elements = {
   toolMenu: document.querySelector("#toolMenu"),
   addDomButton: document.querySelector("#addDomButton"),
   contextChip: document.querySelector("#contextChip"),
+  contextChipMenu: document.querySelector("#contextChip .chip-menu"),
   chipPreviewButton: document.querySelector("#chipPreviewButton"),
   removeContextButton: document.querySelector("#removeContextButton"),
   errorBanner: document.querySelector("#errorBanner"),
@@ -32,6 +34,7 @@ const elements = {
   allowSiteButton: document.querySelector("#allowSiteButton"),
   contextPreviewDialog: document.querySelector("#contextPreviewDialog"),
   contextPreviewContent: document.querySelector("#contextPreviewContent"),
+  previewDescription: document.querySelector("#previewDescription"),
   previewStats: document.querySelector("#previewStats"),
   closePreviewButton: document.querySelector("#closePreviewButton"),
   donePreviewButton: document.querySelector("#donePreviewButton"),
@@ -40,8 +43,12 @@ const elements = {
 };
 
 let chatHistory = [];
+let memorizedDomAttachments = [];
 let activeRequest = null;
+let conversationModel = null;
 let domContextEnabled = false;
+let lastCaretRange = null;
+let contextChipMenuCloseTimer = null;
 let currentSite = {
   tabId: null,
   hostname: "",
@@ -71,7 +78,7 @@ function updateSendButton() {
   elements.sendButton.classList.remove("generating");
   elements.sendButton.setAttribute("aria-label", "Send message");
   elements.sendButton.disabled =
-    !elements.input.value.trim() ||
+    !getPromptText().trim() ||
     !elements.modelSelect.value ||
     (domContextEnabled && !currentSite.hasAccess);
 }
@@ -83,16 +90,169 @@ function setToolMenu(open) {
 
 function setDomContextEnabled(enabled) {
   domContextEnabled = enabled;
-  elements.contextChip.hidden = !enabled;
-  elements.addDomButton.disabled = enabled;
-  elements.input.placeholder = enabled ? "Ask anything about this page" : "Ask anything";
+  if (enabled) {
+    insertChipAtCaret(elements.contextChip);
+  } else {
+    closeContextChipMenu();
+    elements.contextChip.remove();
+    elements.contextChip.hidden = true;
+  }
+  elements.addDomButton.disabled = Boolean(enabled);
+  elements.addDomButton.setAttribute("aria-disabled", String(Boolean(enabled)));
+  elements.input.dataset.placeholder = enabled ? "Ask anything about this page" : "Ask anything";
   setToolMenu(false);
   renderSiteAccess();
 }
 
+function positionContextChipMenu() {
+  const menu = elements.contextChipMenu;
+  if (!menu.classList.contains("is-open")) return;
+
+  const chipBounds = elements.contextChip.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth;
+  const menuHeight = menu.offsetHeight;
+  const horizontalPadding = 8;
+  menu.style.left = `${Math.min(
+    Math.max(chipBounds.left + (chipBounds.width - menuWidth) / 2, horizontalPadding),
+    window.innerWidth - menuWidth - horizontalPadding
+  )}px`;
+  menu.style.top = `${Math.max(chipBounds.top - menuHeight - 5, horizontalPadding)}px`;
+}
+
+function openContextChipMenu() {
+  clearTimeout(contextChipMenuCloseTimer);
+  const menu = elements.contextChipMenu;
+  if (!menu.classList.contains("is-open")) {
+    menu.classList.add("is-open");
+    document.body.append(menu);
+  }
+  positionContextChipMenu();
+}
+
+function closeContextChipMenu() {
+  clearTimeout(contextChipMenuCloseTimer);
+  const menu = elements.contextChipMenu;
+  if (!menu.classList.contains("is-open")) return;
+  menu.classList.remove("is-open");
+  menu.removeAttribute("style");
+  elements.contextChip.append(menu);
+}
+
+function scheduleContextChipMenuClose() {
+  clearTimeout(contextChipMenuCloseTimer);
+  contextChipMenuCloseTimer = setTimeout(() => {
+    if (!elements.contextChip.matches(":hover, :focus-within") &&
+        !elements.contextChipMenu.matches(":hover, :focus-within")) {
+      closeContextChipMenu();
+    }
+  }, 120);
+}
+
+function enableReplyChipMenuOverlay(chip, menu) {
+  let closeTimer = null;
+
+  const positionMenu = () => {
+    if (!menu.classList.contains("is-open")) return;
+    const chipBounds = chip.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const horizontalPadding = 8;
+    menu.style.left = `${Math.min(
+      Math.max(chipBounds.left + (chipBounds.width - menuWidth) / 2, horizontalPadding),
+      window.innerWidth - menuWidth - horizontalPadding
+    )}px`;
+    menu.style.top = `${Math.max(chipBounds.top - menuHeight - 5, horizontalPadding)}px`;
+  };
+
+  const openMenu = () => {
+    clearTimeout(closeTimer);
+    if (!menu.classList.contains("is-open")) {
+      menu.classList.add("is-open");
+      document.body.append(menu);
+    }
+    positionMenu();
+  };
+
+  const closeMenu = () => {
+    clearTimeout(closeTimer);
+    if (!menu.classList.contains("is-open")) return;
+    menu.classList.remove("is-open");
+    menu.removeAttribute("style");
+    chip.append(menu);
+  };
+
+  const scheduleClose = () => {
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => {
+      if (!chip.matches(":hover, :focus-within") && !menu.matches(":hover, :focus-within")) {
+        closeMenu();
+      }
+    }, 120);
+  };
+
+  chip.addEventListener("pointerenter", openMenu);
+  chip.addEventListener("pointerleave", scheduleClose);
+  chip.addEventListener("focusin", openMenu);
+  chip.addEventListener("focusout", scheduleClose);
+  menu.addEventListener("pointerenter", openMenu);
+  menu.addEventListener("pointerleave", scheduleClose);
+  menu.addEventListener("focusin", openMenu);
+  menu.addEventListener("focusout", scheduleClose);
+  elements.conversation.addEventListener("scroll", positionMenu);
+  window.addEventListener("resize", positionMenu);
+}
+
 function resizeInput() {
-  elements.input.style.height = "auto";
-  elements.input.style.height = `${Math.min(elements.input.scrollHeight, 160)}px`;
+  // The editable composer grows naturally until its CSS max-height.
+}
+
+function getPromptText() {
+  const clone = elements.input.cloneNode(true);
+  clone.querySelectorAll(".context-chip").forEach((chip) => chip.remove());
+  return clone.innerText.replace(/\u00a0/g, " ");
+}
+
+function setPromptText(text = "") {
+  elements.input.replaceChildren(document.createTextNode(text));
+  if (domContextEnabled) {
+    elements.contextChip.hidden = false;
+    elements.input.append(elements.contextChip, document.createTextNode(" "));
+  }
+  lastCaretRange = null;
+}
+
+function saveCaretRange() {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (elements.input.contains(range.startContainer) && elements.input.contains(range.endContainer)) {
+    lastCaretRange = range.cloneRange();
+  }
+}
+
+function moveCaretAfter(node) {
+  const range = document.createRange();
+  range.setStartAfter(node);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  lastCaretRange = range.cloneRange();
+}
+
+function insertChipAtCaret(chip) {
+  chip.hidden = false;
+  const range = lastCaretRange;
+  const canInsertAtCaret = range && elements.input.contains(range.startContainer);
+  if (canInsertAtCaret) {
+    range.collapse(true);
+    range.insertNode(chip);
+  } else {
+    elements.input.append(chip);
+  }
+  const spacer = document.createTextNode(" ");
+  chip.after(spacer);
+  moveCaretAfter(spacer);
 }
 
 function scrollToLatest() {
@@ -126,6 +286,38 @@ function renderInlineMarkdown(value) {
   return text.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => codeSpans[Number(index)]);
 }
 
+function splitTableRow(line) {
+  let value = line.trim();
+  if (value.startsWith("|")) value = value.slice(1);
+  if (value.endsWith("|") && !value.endsWith("\\|")) value = value.slice(0, -1);
+
+  const cells = [];
+  let cell = "";
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "\\" && value[index + 1] === "|") {
+      cell += "|";
+      index += 1;
+    } else if (value[index] === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += value[index];
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function getTableAlignments(line) {
+  const cells = splitTableRow(line);
+  if (!cells.length || cells.some((cell) => !/^:?-{3,}:?$/.test(cell))) return null;
+  return cells.map((cell) => {
+    if (cell.startsWith(":") && cell.endsWith(":")) return "center";
+    if (cell.endsWith(":")) return "right";
+    return "left";
+  });
+}
+
 function markdownToHtml(markdown = "") {
   const lines = String(markdown).replace(/\r\n?/g, "\n").split("\n");
   const html = [];
@@ -149,12 +341,13 @@ function markdownToHtml(markdown = "") {
     const languageClass = /^[a-z0-9_+-]+$/i.test(codeLanguage)
       ? ` class="language-${codeLanguage}"`
       : "";
-    html.push(`<pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    html.push(`<div class="code-block"><pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre></div>`);
     codeLines = [];
     codeLanguage = "";
   };
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const fence = line.match(/^```(\S*)\s*$/);
     if (fence) {
       flushParagraph();
@@ -171,6 +364,39 @@ function markdownToHtml(markdown = "") {
     if (!line.trim()) {
       flushParagraph();
       closeList();
+      continue;
+    }
+
+    const tableAlignments = lineIndex + 1 < lines.length
+      ? getTableAlignments(lines[lineIndex + 1])
+      : null;
+    if (line.includes("|") && tableAlignments) {
+      flushParagraph();
+      closeList();
+      const headers = splitTableRow(line);
+      const columnCount = Math.max(headers.length, tableAlignments.length);
+      const renderCell = (tag, value, index) => {
+        const alignment = tableAlignments[index] || "left";
+        return `<${tag} style="text-align:${alignment}">${renderInlineMarkdown(value || "")}</${tag}>`;
+      };
+
+      html.push('<div class="table-scroll"><table><thead><tr>');
+      for (let index = 0; index < columnCount; index += 1) {
+        html.push(renderCell("th", headers[index], index));
+      }
+      html.push("</tr></thead><tbody>");
+      lineIndex += 2;
+      while (lineIndex < lines.length && lines[lineIndex].trim() && lines[lineIndex].includes("|")) {
+        const cells = splitTableRow(lines[lineIndex]);
+        html.push("<tr>");
+        for (let index = 0; index < columnCount; index += 1) {
+          html.push(renderCell("td", cells[index], index));
+        }
+        html.push("</tr>");
+        lineIndex += 1;
+      }
+      html.push("</tbody></table></div>");
+      lineIndex -= 1;
       continue;
     }
 
@@ -253,7 +479,72 @@ function appendMessage(role, content = "", options = {}) {
   return message;
 }
 
-function appendAssistantMessage({ thinkingEnabled = false, hasContext = false } = {}) {
+function setReplyContextAvailability(attachment, memorized) {
+  attachment.memorized = memorized;
+  if (!attachment.previewButton) return;
+  attachment.previewButton.disabled = !memorized;
+  attachment.previewButton.setAttribute("aria-disabled", String(!memorized));
+  attachment.note.hidden = memorized;
+  attachment.chip.classList.toggle("context-chip-unavailable", !memorized);
+}
+
+function rememberDomAttachment(attachment, context) {
+  attachment.context = context;
+  memorizedDomAttachments.push(attachment);
+  while (memorizedDomAttachments.length > MAX_MEMORIZED_DOM_ATTACHMENTS) {
+    const forgotten = memorizedDomAttachments.shift();
+    forgotten.context = null;
+    setReplyContextAvailability(forgotten, false);
+  }
+}
+
+function createReplyContextChip(attachment) {
+  const chip = document.createElement("div");
+  chip.className = "context-chip reply-context-chip";
+  chip.tabIndex = 0;
+  chip.setAttribute("aria-label", "DOM page context");
+  chip.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path>
+    </svg>
+    <span>DOM</span>
+  `;
+
+  const menu = document.createElement("div");
+  menu.className = "chip-menu reply-chip-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "DOM context options");
+
+  const previewButton = document.createElement("button");
+  previewButton.type = "button";
+  previewButton.textContent = "Preview";
+  previewButton.setAttribute("role", "menuitem");
+  previewButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (attachment.memorized && attachment.context) {
+      openStoredContextPreview(attachment.context);
+    }
+  });
+
+  const note = document.createElement("small");
+  note.className = "chip-menu-note";
+  note.textContent = "This DOM reference is not memorized.";
+  note.hidden = true;
+  menu.append(previewButton, note);
+  chip.append(menu);
+  enableReplyChipMenuOverlay(chip, menu);
+
+  Object.assign(attachment, { chip, previewButton, note });
+  return chip;
+}
+
+function appendAssistantMessage({
+  thinkingEnabled = false,
+  contextAttachment = null,
+  modelSwitching = false
+} = {}) {
   elements.emptyState.hidden = true;
 
   const row = document.createElement("div");
@@ -262,17 +553,53 @@ function appendAssistantMessage({ thinkingEnabled = false, hasContext = false } 
   const contentWrap = document.createElement("div");
   contentWrap.style.width = "100%";
 
-  if (hasContext) {
-    const badge = document.createElement("div");
-    badge.className = "context-badge";
-    badge.textContent = "Page context";
-    contentWrap.append(badge);
+  if (contextAttachment) {
+    contentWrap.append(createReplyContextChip(contextAttachment));
   }
+
+  const processingStatus = document.createElement("div");
+  processingStatus.className = "processing-status";
+  processingStatus.setAttribute("role", "status");
+  processingStatus.setAttribute("aria-live", "polite");
+
+  const processingHeader = document.createElement("div");
+  processingHeader.className = "processing-header";
+
+  const processingLabel = document.createElement("div");
+  processingLabel.className = "processing-label";
+  processingLabel.textContent = modelSwitching
+    ? "Ollama Loading (May take longer due to model switching)"
+    : "Ollama loading…";
+
+  const processingInfoButton = document.createElement("button");
+  processingInfoButton.className = "processing-info-button";
+  processingInfoButton.type = "button";
+  processingInfoButton.textContent = "i";
+  processingInfoButton.setAttribute("aria-label", "About Ollama loading");
+  processingInfoButton.setAttribute("aria-expanded", "false");
+
+  const processingInfo = document.createElement("div");
+  processingInfo.className = "processing-info";
+  processingInfo.id = `processing-info-${crypto.randomUUID()}`;
+  processingInfo.hidden = true;
+  processingInfo.setAttribute("role", "tooltip");
+  processingInfo.textContent =
+    "Ollama is loading the model, tokenizing this chat and page context, and preparing its context cache in memory before it can start producing a response.";
+  processingInfoButton.setAttribute("aria-describedby", processingInfo.id);
+  processingInfoButton.addEventListener("click", () => {
+    const open = processingInfo.hidden;
+    processingInfo.hidden = !open;
+    processingInfoButton.setAttribute("aria-expanded", String(open));
+  });
+
+  processingHeader.append(processingLabel, processingInfoButton);
+  processingStatus.append(processingHeader, processingInfo);
+  contentWrap.append(processingStatus);
 
   const thinkingPanel = document.createElement("details");
   thinkingPanel.className = "thinking-panel streaming";
   thinkingPanel.open = thinkingEnabled;
-  thinkingPanel.hidden = !thinkingEnabled;
+  thinkingPanel.hidden = true;
 
   const thinkingSummary = document.createElement("summary");
   thinkingSummary.textContent = "Thinking…";
@@ -285,8 +612,8 @@ function appendAssistantMessage({ thinkingEnabled = false, hasContext = false } 
   contentWrap.append(thinkingPanel);
 
   const message = document.createElement("div");
-  message.className = `message${thinkingEnabled ? "" : " pending"}`;
-  message.textContent = thinkingEnabled ? "" : "Thinking…";
+  message.className = "message pending";
+  message.textContent = "";
   contentWrap.append(message);
 
   row.append(contentWrap);
@@ -295,6 +622,8 @@ function appendAssistantMessage({ thinkingEnabled = false, hasContext = false } 
 
   return {
     message,
+    processingStatus,
+    processingLabel,
     thinkingPanel,
     thinkingSummary,
     thinkingContent,
@@ -875,6 +1204,9 @@ function buildOllamaMessages(prompt, page = null) {
 }
 
 async function refreshContextPreview() {
+  elements.previewDescription.textContent =
+    "This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.";
+  elements.refreshPreviewButton.hidden = false;
   elements.refreshPreviewButton.disabled = true;
   elements.refreshPreviewButton.textContent = "Capturing…";
   elements.contextPreviewContent.textContent =
@@ -897,6 +1229,22 @@ async function refreshContextPreview() {
   } finally {
     elements.refreshPreviewButton.disabled = false;
     elements.refreshPreviewButton.textContent = "Refresh";
+  }
+}
+
+function openStoredContextPreview(context) {
+  elements.previewDescription.textContent =
+    "This is the exact structured page information that was sent with this reply.";
+  elements.contextPreviewContent.textContent = JSON.stringify(context, null, 2);
+  elements.previewStats.textContent = [
+    `${context.stats.viewportTextCharacters.toLocaleString()} viewport text characters`,
+    `${context.stats.otherVisibleTextCharacters.toLocaleString()} other visible text characters`,
+    `${context.stats.headingCount.toLocaleString()} headings`,
+    `${context.stats.interactiveElementCount.toLocaleString()} interactive elements`
+  ].join(" · ");
+  elements.refreshPreviewButton.hidden = true;
+  if (!elements.contextPreviewDialog.open) {
+    elements.contextPreviewDialog.showModal();
   }
 }
 
@@ -990,15 +1338,23 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
 async function submitPrompt(prompt) {
   if (!prompt || activeRequest || !elements.modelSelect.value) return;
 
+  const selectedModel = elements.modelSelect.value;
+  const modelSwitching = Boolean(conversationModel && conversationModel !== selectedModel);
+  conversationModel = selectedModel;
   const thinkingEnabled = elements.thinkingSelect.value === "on";
   const includeDomContext = domContextEnabled;
+  const contextAttachment = includeDomContext
+    ? { context: null, memorized: true }
+    : null;
   setError("");
-  elements.input.value = "";
+  setDomContextEnabled(false);
+  setPromptText();
   resizeInput();
   appendMessage("user", prompt);
   const assistantUI = appendAssistantMessage({
     thinkingEnabled,
-    hasContext: includeDomContext
+    contextAttachment,
+    modelSwitching
   });
 
   const controller = new AbortController();
@@ -1007,12 +1363,13 @@ async function submitPrompt(prompt) {
 
   try {
     const page = includeDomContext ? await captureActivePageContext() : null;
-    if (!thinkingEnabled) {
-      assistantUI.message.textContent = "Thinking…";
+    if (contextAttachment && page) {
+      rememberDomAttachment(contextAttachment, page);
     }
     const messages = buildOllamaMessages(prompt, page);
     const answer = await streamChat(messages, controller.signal, {
       onThinking: (thinking) => {
+        assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
         assistantUI.thinkingPanel.hidden = false;
         if (!assistantUI.answerStarted) {
@@ -1029,6 +1386,7 @@ async function submitPrompt(prompt) {
         scrollToLatest();
       },
       onContent: (text) => {
+        assistantUI.processingStatus.hidden = true;
         if (!assistantUI.answerStarted) {
           assistantUI.answerStarted = true;
           assistantUI.thinkingPanel.classList.remove("streaming");
@@ -1046,6 +1404,7 @@ async function submitPrompt(prompt) {
       }
     });
 
+    assistantUI.processingStatus.hidden = true;
     assistantUI.thinkingPanel.classList.remove("streaming");
     if (answer.thinking) {
       assistantUI.thinkingSummary.textContent = "Thought process";
@@ -1067,6 +1426,10 @@ async function submitPrompt(prompt) {
       }
     );
   } catch (error) {
+    if (contextAttachment && !contextAttachment.context) {
+      setReplyContextAvailability(contextAttachment, false);
+    }
+    assistantUI.processingStatus.hidden = true;
     assistantUI.message.classList.remove("pending");
     assistantUI.thinkingPanel.classList.remove("streaming");
     if (error.name === "AbortError") {
@@ -1095,18 +1458,38 @@ elements.form.addEventListener("submit", (event) => {
     activeRequest.abort();
     return;
   }
-  submitPrompt(elements.input.value.trim());
+  submitPrompt(getPromptText().trim());
 });
 
 elements.input.addEventListener("input", () => {
+  if (domContextEnabled && !elements.input.contains(elements.contextChip)) {
+    setDomContextEnabled(false);
+  }
+  saveCaretRange();
   resizeInput();
   updateSendButton();
+});
+
+elements.input.addEventListener("focus", saveCaretRange);
+elements.input.addEventListener("click", saveCaretRange);
+elements.contextChip.addEventListener("pointerenter", openContextChipMenu);
+elements.contextChip.addEventListener("pointerleave", scheduleContextChipMenuClose);
+elements.contextChip.addEventListener("focusin", openContextChipMenu);
+elements.contextChip.addEventListener("focusout", scheduleContextChipMenuClose);
+elements.contextChipMenu.addEventListener("pointerenter", openContextChipMenu);
+elements.contextChipMenu.addEventListener("pointerleave", scheduleContextChipMenuClose);
+elements.contextChipMenu.addEventListener("focusin", openContextChipMenu);
+elements.contextChipMenu.addEventListener("focusout", scheduleContextChipMenuClose);
+elements.input.addEventListener("scroll", positionContextChipMenu);
+window.addEventListener("resize", positionContextChipMenu);
+document.addEventListener("selectionchange", () => {
+  if (document.activeElement === elements.input) saveCaretRange();
 });
 
 elements.input.addEventListener("keydown", (event) => {
   if (
     event.key === "Backspace" &&
-    !elements.input.value &&
+    !getPromptText().trim() &&
     domContextEnabled
   ) {
     event.preventDefault();
@@ -1139,11 +1522,17 @@ elements.addDomButton.addEventListener("click", () => {
   setDomContextEnabled(true);
   elements.input.focus();
 });
-elements.removeContextButton.addEventListener("click", () => {
+elements.removeContextButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
   setDomContextEnabled(false);
   elements.input.focus();
 });
-elements.chipPreviewButton.addEventListener("click", openContextPreview);
+elements.chipPreviewButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openContextPreview();
+});
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".tool-picker")) setToolMenu(false);
 });
@@ -1169,6 +1558,8 @@ elements.contextPreviewDialog.addEventListener("click", (event) => {
 elements.newChatButton.addEventListener("click", () => {
   activeRequest?.abort();
   chatHistory = [];
+  conversationModel = null;
+  memorizedDomAttachments = [];
   elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
   elements.emptyState.hidden = false;
   setDomContextEnabled(false);
@@ -1178,7 +1569,7 @@ elements.newChatButton.addEventListener("click", () => {
 
 for (const suggestion of elements.suggestions) {
   suggestion.addEventListener("click", () => {
-    elements.input.value = suggestion.textContent;
+    setPromptText(suggestion.textContent);
     resizeInput();
     updateSendButton();
     elements.input.focus();
