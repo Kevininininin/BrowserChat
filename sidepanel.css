@@ -327,6 +327,90 @@ select {
   padding: 1px 4px;
 }
 
+.assistant .message > :first-child {
+  margin-top: 0;
+}
+
+.assistant .message > :last-child {
+  margin-bottom: 0;
+}
+
+.assistant .message p {
+  margin: 0 0 0.9em;
+}
+
+.assistant .message h1,
+.assistant .message h2,
+.assistant .message h3,
+.assistant .message h4,
+.assistant .message h5,
+.assistant .message h6 {
+  margin: 1.35em 0 0.55em;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.assistant .message h1 { font-size: 1.45em; }
+.assistant .message h2 { font-size: 1.28em; }
+.assistant .message h3 { font-size: 1.12em; }
+.assistant .message h4,
+.assistant .message h5,
+.assistant .message h6 { font-size: 1em; }
+
+.assistant .message ul,
+.assistant .message ol {
+  margin: 0.55em 0 1em;
+  padding-left: 1.5em;
+}
+
+.assistant .message li {
+  margin: 0.28em 0;
+  padding-left: 0.12em;
+}
+
+.assistant .message blockquote {
+  margin: 0.8em 0;
+  padding: 0.2em 0 0.2em 0.85em;
+  color: #5f5f5a;
+  border-left: 3px solid #d2d2cc;
+}
+
+.assistant .message a {
+  color: #2867b2;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.assistant .message code {
+  padding: 0.12em 0.32em;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  background: #ecece8;
+  border-radius: 5px;
+}
+
+.assistant .message pre {
+  margin: 0.85em 0 1em;
+  padding: 12px;
+  overflow-x: auto;
+  background: #242422;
+  border-radius: 11px;
+}
+
+.assistant .message pre code {
+  padding: 0;
+  color: #f2f2ee;
+  line-height: 1.5;
+  white-space: pre;
+  background: transparent;
+}
+
+.assistant .message hr {
+  margin: 1.25em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
 .assistant .message.pending::after {
   display: inline-block;
   width: 7px;
@@ -495,9 +579,18 @@ select {
   box-shadow: 0 6px 22px rgb(0 0 0 / 8%), 0 0 0 2px rgb(0 0 0 / 2%);
 }
 
+.composer-input {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 #promptInput {
   display: block;
-  width: 100%;
+  flex: 1 1 180px;
+  width: auto;
+  min-width: 120px;
   max-height: 160px;
   padding: 3px 4px 10px;
   color: var(--text);
@@ -510,6 +603,74 @@ select {
 
 #promptInput::placeholder {
   color: #9b9b96;
+}
+
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 27px;
+  margin-bottom: 6px;
+  padding: 0 7px;
+  gap: 5px;
+  color: #245f39;
+  font-size: 11px;
+  font-weight: 650;
+  background: #edf6ef;
+  border: 1px solid #cee2d2;
+  border-radius: 9px;
+}
+
+.context-chip[hidden] {
+  display: none;
+}
+
+.context-chip > svg,
+.chip-remove-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+.chip-preview-button,
+.chip-remove-button {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.chip-preview-button {
+  max-width: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 10px;
+  opacity: 0;
+  transition: max-width 140ms ease, opacity 140ms ease;
+}
+
+.context-chip:hover .chip-preview-button,
+.context-chip:focus-within .chip-preview-button {
+  max-width: 52px;
+  padding-left: 3px;
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chip-remove-button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.chip-remove-button:hover {
+  background: rgb(36 95 57 / 10%);
 }
 
 .composer-controls {
@@ -525,6 +686,106 @@ select {
   flex-wrap: wrap;
   min-width: 0;
   gap: 6px;
+}
+
+.tool-picker {
+  position: relative;
+}
+
+.tool-menu-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: #555551;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.tool-menu-button:hover,
+.tool-menu-button[aria-expanded="true"] {
+  color: var(--text);
+  background: #f0f0ec;
+}
+
+.tool-menu-button svg,
+.tool-menu-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.7;
+}
+
+.tool-menu {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: -4px;
+  z-index: 5;
+  width: 238px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid #deded9;
+  border-radius: 13px;
+  box-shadow: 0 12px 35px rgb(0 0 0 / 15%);
+}
+
+.tool-menu[hidden] {
+  display: none;
+}
+
+.tool-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 9px;
+  gap: 10px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.tool-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.tool-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tool-menu-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  color: #2f8a50;
+  background: #edf6ef;
+  border-radius: 8px;
+}
+
+.tool-menu-item strong,
+.tool-menu-item small {
+  display: block;
+}
+
+.tool-menu-item strong {
+  font-size: 12px;
+}
+
+.tool-menu-item small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
 }
 
 .select-chip {
@@ -657,10 +918,10 @@ select {
 }
 
 .context-preview-dialog {
-  width: min(92vw, 680px);
-  max-width: 680px;
-  height: min(84vh, 760px);
-  max-height: 760px;
+  width: calc(100vw - 20px);
+  max-width: 900px;
+  height: calc(100vh - 20px);
+  max-height: 900px;
   padding: 0;
   color: var(--text);
   background: var(--surface);

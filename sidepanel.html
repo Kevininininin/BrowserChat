@@ -62,24 +62,44 @@
         </div>
         <div id="errorBanner" class="error-banner" role="alert" hidden></div>
         <form id="chatForm" class="composer">
-          <textarea
-            id="promptInput"
-            rows="1"
-            maxlength="8000"
-            placeholder="Ask anything about this page"
-            aria-label="Message Pagewise"
-          ></textarea>
+          <div class="composer-input">
+            <div id="contextChip" class="context-chip" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+              </svg>
+              <span>DOM</span>
+              <button id="chipPreviewButton" class="chip-preview-button" type="button">Preview</button>
+              <button id="removeContextButton" class="chip-remove-button" type="button" aria-label="Remove DOM context">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+              </button>
+            </div>
+            <textarea
+              id="promptInput"
+              rows="1"
+              maxlength="8000"
+              placeholder="Ask anything"
+              aria-label="Message Pagewise"
+            ></textarea>
+          </div>
           <div class="composer-controls">
             <div class="selectors">
-              <label class="select-chip" title="Context tool">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9"/>
-                  <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
-                </svg>
-                <select id="toolSelect" aria-label="Select tool">
-                  <option value="dom">DOM</option>
-                </select>
-              </label>
+              <div class="tool-picker">
+                <button id="toolMenuButton" class="tool-menu-button" type="button" aria-label="Add context" aria-haspopup="menu" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <div id="toolMenu" class="tool-menu" role="menu" hidden>
+                  <button id="addDomButton" class="tool-menu-item" type="button" role="menuitem">
+                    <span class="tool-menu-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"/>
+                        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+                      </svg>
+                    </span>
+                    <span><strong>DOM context</strong><small>Include this page’s content</small></span>
+                  </button>
+                </div>
+              </div>
               <label class="select-chip model-chip" title="Ollama model">
                 <span class="ollama-mark" aria-hidden="true">●</span>
                 <select id="modelSelect" aria-label="Select Ollama model">
@@ -107,13 +127,7 @@
             </button>
           </div>
         </form>
-        <p class="privacy-note">
-          <button id="previewContextButton" class="preview-context-button" type="button" disabled>
-            Preview page context
-          </button>
-          <span aria-hidden="true">·</span>
-          Your page content stays on this device.
-        </p>
+        <p class="privacy-note">Your page content stays on this device.</p>
       </footer>
     </div>
 
