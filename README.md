@@ -43,6 +43,11 @@ OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
 
 The model menu is populated from `http://localhost:11434/api/tags`.
 
+The header keeps separate local chats. Each chat remembers its most recent tab
+and favicon, and selecting a chat reactivates that tab when it is still open.
+After the first assistant response, Pagewise asks the selected Ollama model once
+for a short title summarizing the user's first question, with thinking disabled.
+
 ## How it works
 
 On each message, Pagewise:
@@ -65,7 +70,8 @@ Chrome blocks DOM access on internal pages such as `chrome://extensions`, so use
 - `scripting`: capture the DOM after the user has approved the active site.
 - Optional HTTP/HTTPS site access: Chrome remembers each origin the user approves.
 - `sidePanel`: host the chatbot beside the active page.
-- `storage`: remember the selected model.
+- `storage`: remember chats, their last tabs, and the selected model.
+- `favicon`: display the remembered page icon for each chat.
 - localhost host permissions: connect only to Ollama on port `11434`.
 
 ## Troubleshooting

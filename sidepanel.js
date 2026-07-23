@@ -1,6 +1,9 @@
 const OLLAMA_BASE_URL = "http://localhost:11434";
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_MEMORIZED_DOM_ATTACHMENTS = 3;
+const CHAT_STORAGE_KEY = "pagewiseChats";
+const ACTIVE_CHAT_STORAGE_KEY = "pagewiseActiveChatId";
+const DEFAULT_CHAT_TITLE = "New Chat";
 const CONTEXT_LIMITS = {
   viewportTextCharacters: 12_000,
   pageTextCharacters: 28_000,
@@ -27,6 +30,11 @@ const elements = {
   removeContextButton: document.querySelector("#removeContextButton"),
   errorBanner: document.querySelector("#errorBanner"),
   connectionDot: document.querySelector("#connectionDot"),
+  chatPickerButton: document.querySelector("#chatPickerButton"),
+  chatMenu: document.querySelector("#chatMenu"),
+  chatList: document.querySelector("#chatList"),
+  currentChatFavicon: document.querySelector("#currentChatFavicon"),
+  currentChatTitle: document.querySelector("#currentChatTitle"),
   newChatButton: document.querySelector("#newChatButton"),
   siteAccessBanner: document.querySelector("#siteAccessBanner"),
   siteAccessTitle: document.querySelector("#siteAccessTitle"),
@@ -42,6 +50,8 @@ const elements = {
   suggestions: document.querySelectorAll(".suggestion")
 };
 
+let chats = [];
+let activeChatId = null;
 let chatHistory = [];
 let memorizedDomAttachments = [];
 let activeRequest = null;
@@ -56,6 +66,284 @@ let currentSite = {
   hasAccess: false,
   restricted: false
 };
+
+function createChat() {
+  return {
+    id: crypto.randomUUID(),
+    title: DEFAULT_CHAT_TITLE,
+    titleGenerationAttempted: false,
+    messages: [],
+    tabId: null,
+    windowId: null,
+    pageUrl: "",
+    faviconUrl: "",
+    hostname: "",
+    conversationModel: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function getActiveChat() {
+  return chats.find((chat) => chat.id === activeChatId) || null;
+}
+
+function normalizeStoredChat(chat) {
+  return {
+    ...createChat(),
+    ...chat,
+    id: typeof chat?.id === "string" ? chat.id : crypto.randomUUID(),
+    title: typeof chat?.title === "string" && chat.title.trim()
+      ? chat.title.trim()
+      : DEFAULT_CHAT_TITLE,
+    titleGenerationAttempted: Boolean(chat?.titleGenerationAttempted),
+    messages: Array.isArray(chat?.messages)
+      ? chat.messages.filter((message) =>
+          ["user", "assistant"].includes(message?.role) &&
+          typeof message?.content === "string"
+        )
+      : []
+  };
+}
+
+function getFallbackFaviconUrl() {
+  return chrome.runtime.getURL("assets/icon-32.png");
+}
+
+function getFaviconUrl(tab = {}) {
+  if (tab.url && /^https?:/i.test(tab.url)) {
+    return chrome.runtime.getURL(
+      `/_favicon/?pageUrl=${encodeURIComponent(tab.url)}&size=32`
+    );
+  }
+  return tab.favIconUrl || getFallbackFaviconUrl();
+}
+
+function setImageSource(image, source) {
+  image.onerror = () => {
+    image.onerror = null;
+    image.src = getFallbackFaviconUrl();
+  };
+  image.src = source || getFallbackFaviconUrl();
+}
+
+async function persistChats() {
+  await chrome.storage.local.set({
+    [CHAT_STORAGE_KEY]: chats,
+    [ACTIVE_CHAT_STORAGE_KEY]: activeChatId
+  });
+}
+
+function setChatMenu(open) {
+  elements.chatMenu.hidden = !open;
+  elements.chatPickerButton.setAttribute("aria-expanded", String(open));
+  if (!open) closeChatActionMenus();
+}
+
+function closeChatActionMenus(exceptChatId = null) {
+  for (const menu of elements.chatList.querySelectorAll(".chat-row-menu")) {
+    const keepOpen = exceptChatId && menu.dataset.chatMenuId === exceptChatId;
+    menu.hidden = !keepOpen;
+  }
+  for (const button of elements.chatList.querySelectorAll("[data-chat-actions]")) {
+    button.setAttribute(
+      "aria-expanded",
+      String(Boolean(exceptChatId && button.dataset.chatActions === exceptChatId))
+    );
+  }
+}
+
+function renderChatHeader() {
+  const chat = getActiveChat();
+  elements.currentChatTitle.textContent = chat?.title || DEFAULT_CHAT_TITLE;
+  elements.chatPickerButton.title = chat?.title || DEFAULT_CHAT_TITLE;
+  setImageSource(elements.currentChatFavicon, chat?.faviconUrl);
+}
+
+function renderChatMenu() {
+  elements.chatList.replaceChildren();
+  const sortedChats = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  for (const chat of sortedChats) {
+    const row = document.createElement("div");
+    row.className = "chat-menu-row";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `chat-menu-item${chat.id === activeChatId ? " active" : ""}`;
+    button.setAttribute("role", "menuitem");
+    button.dataset.chatId = chat.id;
+
+    const faviconWrap = document.createElement("span");
+    faviconWrap.className = "site-favicon-wrap";
+    const favicon = document.createElement("img");
+    favicon.className = "site-favicon";
+    favicon.alt = "";
+    setImageSource(favicon, chat.faviconUrl);
+    faviconWrap.append(favicon);
+
+    const copy = document.createElement("span");
+    copy.className = "chat-menu-copy";
+    const title = document.createElement("span");
+    title.className = "chat-menu-title";
+    title.textContent = chat.title || DEFAULT_CHAT_TITLE;
+    const site = document.createElement("span");
+    site.className = "chat-menu-site";
+    site.textContent = chat.hostname || "No site remembered yet";
+    copy.append(title, site);
+    button.append(faviconWrap, copy);
+
+    const actions = document.createElement("button");
+    actions.type = "button";
+    actions.className = "chat-actions-button";
+    actions.dataset.chatActions = chat.id;
+    actions.setAttribute("aria-label", `More options for ${chat.title || DEFAULT_CHAT_TITLE}`);
+    actions.setAttribute("aria-haspopup", "menu");
+    actions.setAttribute("aria-expanded", "false");
+    actions.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="5" cy="12" r="1.35"></circle>
+        <circle cx="12" cy="12" r="1.35"></circle>
+        <circle cx="19" cy="12" r="1.35"></circle>
+      </svg>
+    `;
+
+    const actionMenu = document.createElement("div");
+    actionMenu.className = "chat-row-menu";
+    actionMenu.dataset.chatMenuId = chat.id;
+    actionMenu.setAttribute("role", "menu");
+    actionMenu.hidden = true;
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "delete-chat-button";
+    deleteButton.dataset.deleteChatId = chat.id;
+    deleteButton.setAttribute("role", "menuitem");
+    deleteButton.textContent = "Delete chat";
+    actionMenu.append(deleteButton);
+
+    row.append(button, actions, actionMenu);
+    elements.chatList.append(row);
+  }
+}
+
+function renderCurrentConversation() {
+  elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
+  elements.emptyState.hidden = chatHistory.length > 0;
+  for (const message of chatHistory) {
+    appendMessage(message.role, message.content);
+  }
+}
+
+async function switchToChat(chatId) {
+  const chat = chats.find((item) => item.id === chatId);
+  if (!chat || chat.id === activeChatId) {
+    setChatMenu(false);
+    return;
+  }
+
+  activeRequest?.abort();
+  activeChatId = chat.id;
+  chatHistory = chat.messages;
+  conversationModel = chat.conversationModel || null;
+  memorizedDomAttachments = [];
+  setDomContextEnabled(false);
+  setPromptText();
+  setError("");
+  renderChatHeader();
+  renderChatMenu();
+  renderCurrentConversation();
+  setChatMenu(false);
+  await persistChats();
+
+  let targetTabId = chat.tabId;
+  if (targetTabId) {
+    try {
+      const tab = await chrome.tabs.get(targetTabId);
+      await chrome.tabs.update(targetTabId, { active: true });
+      if (tab.windowId != null) {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+    } catch {
+      targetTabId = null;
+      setError("This chat’s last tab is no longer open. The chat is still available here.");
+    }
+  }
+
+  await refreshSiteAccess(targetTabId);
+  elements.input.focus();
+}
+
+async function startNewChat() {
+  activeRequest?.abort();
+  const chat = createChat();
+  chats.push(chat);
+  activeChatId = chat.id;
+  chatHistory = chat.messages;
+  conversationModel = null;
+  memorizedDomAttachments = [];
+  setDomContextEnabled(false);
+  setPromptText();
+  setError("");
+  renderChatHeader();
+  renderChatMenu();
+  renderCurrentConversation();
+  setChatMenu(false);
+  await persistChats();
+  await refreshSiteAccess();
+  elements.input.focus();
+}
+
+async function deleteChat(chatId) {
+  const chat = chats.find((item) => item.id === chatId);
+  if (!chat) return;
+
+  closeChatActionMenus();
+  const confirmed = window.confirm(`Delete “${chat.title || DEFAULT_CHAT_TITLE}”?`);
+  if (!confirmed) return;
+
+  const deletingActiveChat = chat.id === activeChatId;
+  if (deletingActiveChat) activeRequest?.abort();
+  chats = chats.filter((item) => item.id !== chat.id);
+
+  if (!chats.length) {
+    activeChatId = null;
+    await startNewChat();
+    return;
+  }
+
+  if (deletingActiveChat) {
+    const nextChat = [...chats].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    await switchToChat(nextChat.id);
+    return;
+  }
+
+  renderChatMenu();
+  await persistChats();
+}
+
+async function initializeChats() {
+  const stored = await chrome.storage.local.get([
+    CHAT_STORAGE_KEY,
+    ACTIVE_CHAT_STORAGE_KEY
+  ]);
+  chats = Array.isArray(stored[CHAT_STORAGE_KEY])
+    ? stored[CHAT_STORAGE_KEY].map(normalizeStoredChat)
+    : [];
+
+  if (!chats.length) chats.push(createChat());
+  activeChatId = chats.some((chat) => chat.id === stored[ACTIVE_CHAT_STORAGE_KEY])
+    ? stored[ACTIVE_CHAT_STORAGE_KEY]
+    : chats[0].id;
+
+  const activeChat = getActiveChat();
+  chatHistory = activeChat.messages;
+  conversationModel = activeChat.conversationModel || null;
+  renderChatHeader();
+  renderChatMenu();
+  renderCurrentConversation();
+  await persistChats();
+}
 
 function setError(message = "") {
   elements.errorBanner.textContent = message;
@@ -682,13 +970,6 @@ function renderSiteAccess() {
     return;
   }
 
-  if (!domContextEnabled) {
-    elements.siteAccessBanner.hidden = true;
-    elements.allowSiteButton.disabled = true;
-    updateSendButton();
-    return;
-  }
-
   elements.siteAccessBanner.hidden = false;
   elements.siteAccessBanner.classList.toggle("restricted", currentSite.restricted);
   elements.allowSiteButton.hidden = currentSite.restricted;
@@ -707,9 +988,36 @@ function renderSiteAccess() {
   updateSendButton();
 }
 
-async function refreshSiteAccess() {
+async function rememberTabForActiveChat(tab) {
+  const chat = getActiveChat();
+  if (!chat || !tab?.id) return;
+
+  let hostname = "";
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = new URL(tab.url || "");
+    hostname = ["http:", "https:"].includes(url.protocol)
+      ? url.hostname
+      : url.protocol.replace(":", "");
+  } catch {
+    // Keep the previous hostname when Chrome has no usable URL.
+  }
+
+  chat.tabId = tab.id;
+  chat.windowId = tab.windowId ?? chat.windowId;
+  chat.pageUrl = tab.url || chat.pageUrl;
+  chat.faviconUrl = getFaviconUrl(tab);
+  chat.hostname = hostname || chat.hostname;
+  chat.updatedAt = Date.now();
+  renderChatHeader();
+  renderChatMenu();
+  await persistChats();
+}
+
+async function refreshSiteAccess(preferredTabId = null) {
+  try {
+    const tab = Number.isInteger(preferredTabId)
+      ? await chrome.tabs.get(preferredTabId)
+      : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
     const details = getSiteDetails(tab);
     let hasAccess = false;
 
@@ -720,6 +1028,7 @@ async function refreshSiteAccess() {
     }
 
     currentSite = { ...details, hasAccess };
+    await rememberTabForActiveChat(tab);
   } catch {
     currentSite = {
       tabId: null,
@@ -808,7 +1117,7 @@ async function loadModels() {
 }
 
 async function captureActivePageContext() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) {
     throw new Error("No active browser tab was found.");
   }
@@ -1335,9 +1644,85 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
   return { content: fullText, thinking: fullThinking };
 }
 
+function cleanGeneratedTitle(value = "", fallbackText = "") {
+  const words = String(value)
+    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(title|chat title)\s*:\s*/i, "")
+    .replace(/[.!?,;:]+$/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const fallbackWords = String(fallbackText)
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2);
+  for (const word of [...fallbackWords, "Chat", "Discussion"]) {
+    if (words.length >= 4) break;
+    if (!words.some((existing) => existing.toLowerCase() === word.toLowerCase())) {
+      words.push(word);
+    }
+  }
+  return words.slice(0, 5).join(" ");
+}
+
+async function generateTitleForChat(chatId, model) {
+  const chat = chats.find((item) => item.id === chatId);
+  if (!chat || chat.titleGenerationAttempted || chat.messages.length < 2 || !model) {
+    return;
+  }
+
+  chat.titleGenerationAttempted = true;
+  await persistChats();
+
+  const firstUserMessage = chat.messages.find((message) => message.role === "user");
+  if (!firstUserMessage) return;
+
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        think: false,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Summarize the user's question as a specific 4-5 word chat title. Base the title only on the user's question. Return only the title, with no quotation marks, label, punctuation, or explanation."
+          },
+          {
+            role: "user",
+            content: firstUserMessage.content
+          }
+        ]
+      })
+    });
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const title = cleanGeneratedTitle(
+      data.message?.content,
+      firstUserMessage.content
+    );
+    if (!title) return;
+
+    chat.title = title;
+    chat.updatedAt = Date.now();
+    if (chat.id === activeChatId) renderChatHeader();
+    renderChatMenu();
+    await persistChats();
+  } catch {
+    // Title generation is a one-time enhancement and should never interrupt chat.
+  }
+}
+
 async function submitPrompt(prompt) {
   if (!prompt || activeRequest || !elements.modelSelect.value) return;
 
+  const chatId = activeChatId;
   const selectedModel = elements.modelSelect.value;
   const modelSwitching = Boolean(conversationModel && conversationModel !== selectedModel);
   conversationModel = selectedModel;
@@ -1425,6 +1810,14 @@ async function submitPrompt(prompt) {
         ...(answer.thinking ? { thinking: answer.thinking } : {})
       }
     );
+    const chat = chats.find((item) => item.id === chatId);
+    if (chat) {
+      chat.conversationModel = selectedModel;
+      chat.updatedAt = Date.now();
+      await persistChats();
+      renderChatMenu();
+      void generateTitleForChat(chatId, selectedModel);
+    }
   } catch (error) {
     if (contextAttachment && !contextAttachment.context) {
       setReplyContextAvailability(contextAttachment, false);
@@ -1514,6 +1907,31 @@ elements.thinkingSelect.addEventListener("change", async () => {
 });
 
 elements.allowSiteButton.addEventListener("click", requestCurrentSiteAccess);
+elements.chatPickerButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  renderChatMenu();
+  setChatMenu(elements.chatMenu.hidden);
+});
+elements.chatList.addEventListener("click", (event) => {
+  const actionsButton = event.target.closest("[data-chat-actions]");
+  if (actionsButton) {
+    event.stopPropagation();
+    const chatId = actionsButton.dataset.chatActions;
+    const shouldOpen = actionsButton.getAttribute("aria-expanded") !== "true";
+    closeChatActionMenus(shouldOpen ? chatId : null);
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-chat-id]");
+  if (deleteButton) {
+    event.stopPropagation();
+    void deleteChat(deleteButton.dataset.deleteChatId);
+    return;
+  }
+
+  const button = event.target.closest("[data-chat-id]");
+  if (button) void switchToChat(button.dataset.chatId);
+});
 elements.toolMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   setToolMenu(elements.toolMenu.hidden);
@@ -1535,11 +1953,17 @@ elements.chipPreviewButton.addEventListener("click", (event) => {
 });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".tool-picker")) setToolMenu(false);
+  if (!event.target.closest(".chat-picker")) setChatMenu(false);
+  if (!event.target.closest(".chat-menu-row")) closeChatActionMenus();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.toolMenu.hidden) {
     setToolMenu(false);
     elements.toolMenuButton.focus();
+  }
+  if (event.key === "Escape" && !elements.chatMenu.hidden) {
+    setChatMenu(false);
+    elements.chatPickerButton.focus();
   }
 });
 elements.refreshPreviewButton.addEventListener("click", refreshContextPreview);
@@ -1555,17 +1979,7 @@ elements.contextPreviewDialog.addEventListener("click", (event) => {
   }
 });
 
-elements.newChatButton.addEventListener("click", () => {
-  activeRequest?.abort();
-  chatHistory = [];
-  conversationModel = null;
-  memorizedDomAttachments = [];
-  elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
-  elements.emptyState.hidden = false;
-  setDomContextEnabled(false);
-  setError("");
-  elements.input.focus();
-});
+elements.newChatButton.addEventListener("click", () => void startNewChat());
 
 for (const suggestion of elements.suggestions) {
   suggestion.addEventListener("click", () => {
@@ -1576,15 +1990,25 @@ for (const suggestion of elements.suggestions) {
   });
 }
 
-chrome.tabs.onActivated.addListener(refreshSiteAccess);
+chrome.tabs.onActivated.addListener(({ tabId }) => refreshSiteAccess(tabId));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (tabId === currentSite.tabId && (changeInfo.url || changeInfo.status === "complete")) {
-    refreshSiteAccess();
+  if (
+    tabId === currentSite.tabId &&
+    (changeInfo.url ||
+      changeInfo.favIconUrl ||
+      changeInfo.title ||
+      changeInfo.status === "complete")
+  ) {
+    refreshSiteAccess(tabId);
   }
 });
-chrome.permissions.onAdded.addListener(refreshSiteAccess);
-chrome.permissions.onRemoved.addListener(refreshSiteAccess);
+chrome.permissions.onAdded.addListener(() => refreshSiteAccess());
+chrome.permissions.onRemoved.addListener(() => refreshSiteAccess());
 
-loadModels();
-refreshSiteAccess();
-elements.input.focus();
+async function initializeApp() {
+  await initializeChats();
+  await Promise.all([loadModels(), refreshSiteAccess()]);
+  elements.input.focus();
+}
+
+void initializeApp();

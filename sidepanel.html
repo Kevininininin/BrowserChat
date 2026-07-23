@@ -9,21 +9,33 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true">
-            <img src="assets/pagewise-logo.svg" alt="" />
-          </div>
-          <div>
-            <h1>Pagewise</h1>
-            <p>Local intelligence</p>
+        <div class="chat-picker">
+          <button
+            id="chatPickerButton"
+            class="chat-picker-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            <span class="site-favicon-wrap">
+              <img id="currentChatFavicon" class="site-favicon" src="assets/icon-32.png" alt="" />
+            </span>
+            <span id="currentChatTitle" class="current-chat-title">New Chat</span>
+            <svg class="chat-picker-chevron" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m7 9.5 5 5 5-5"/>
+            </svg>
+          </button>
+          <div id="chatMenu" class="chat-menu" role="menu" aria-label="Chats" hidden>
+            <div id="chatList" class="chat-list"></div>
+            <button id="newChatButton" class="new-chat-menu-item" type="button" role="menuitem">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              <span>New Chat</span>
+            </button>
           </div>
         </div>
         <div class="header-actions">
-          <button id="newChatButton" class="icon-button" type="button" aria-label="Start a new chat" title="New chat">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </button>
           <span id="connectionDot" class="connection-dot" title="Checking Ollama"></span>
         </div>
       </header>
