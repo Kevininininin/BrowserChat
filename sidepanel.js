@@ -637,6 +637,25 @@ function setPromptText(text = "") {
   lastCaretRange = null;
 }
 
+function pastePlainText(event) {
+  const text = event.clipboardData?.getData("text/plain");
+  if (text === undefined) return;
+
+  event.preventDefault();
+
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+
+  const range = selection.getRangeAt(0);
+  if (!elements.input.contains(range.startContainer)) return;
+
+  range.deleteContents();
+  const textNode = document.createTextNode(text.replace(/\r\n?/g, "\n"));
+  range.insertNode(textNode);
+  moveCaretAfter(textNode);
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function saveCaretRange() {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
@@ -2483,6 +2502,7 @@ elements.input.addEventListener("input", () => {
 
 elements.input.addEventListener("focus", saveCaretRange);
 elements.input.addEventListener("click", saveCaretRange);
+elements.input.addEventListener("paste", pastePlainText);
 elements.contextChip.addEventListener("pointerenter", openContextChipMenu);
 elements.contextChip.addEventListener("pointerleave", scheduleContextChipMenuClose);
 elements.contextChip.addEventListener("focusin", openContextChipMenu);
