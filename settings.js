@@ -54,8 +54,8 @@ const databaseElements = {
   recordCount: document.querySelector("#databaseRecordCount"),
   storageSize: document.querySelector("#databaseStorageSize"),
   version: document.querySelector("#databaseVersionBadge"),
-  attachmentsSchemaCount: document.querySelector("#attachmentsSchemaCount"),
-  chunksSchemaCount: document.querySelector("#chunksSchemaCount"),
+  schemaCounts: document.querySelector("#databaseSchemaCounts"),
+  schemaDiagram: document.querySelector("#databaseSchemaDiagram"),
   attachmentsTabCount: document.querySelector("#attachmentsTabCount"),
   chunksTabCount: document.querySelector("#chunksTabCount"),
   tabs: [...document.querySelectorAll("[data-database-store]")],
@@ -129,7 +129,10 @@ async function renderMermaidIn(container) {
   }
 
   for (const diagram of container.querySelectorAll(".settings-mermaid:not(.rendered)")) {
-    if (diagram.id === "runtimeArchitectureDiagram") continue;
+    if (
+      diagram.id === "runtimeArchitectureDiagram" ||
+      diagram.id === "databaseSchemaDiagram"
+    ) continue;
     const source = diagram.textContent.trim();
     try {
       const { svg, bindFunctions } = await mermaid.render(
@@ -305,6 +308,56 @@ function databaseCellMarkup(key, value) {
   return `<span class="${className}" title="${escapeHtml(serialized)}">${escapeHtml(serialized)}</span>`;
 }
 
+async function renderDatabaseSchema() {
+  if (!databaseSnapshot || !databaseElements.schemaDiagram) return;
+  const source = `
+classDiagram
+    direction LR
+    class attachments {
+        string id [PK]
+        string chatId [IDX]
+        string name
+        string kind
+        string status
+        string mimeType
+        number chunkCount
+        string extractedText
+        string embeddingModel
+        timestamp createdAt
+        timestamp updatedAt
+    }
+    class chunks {
+        string id [PK]
+        string attachmentId [FK]
+        string chatId [IDX]
+        string attachmentName
+        string attachmentKind
+        number chunkIndex
+        string text
+        number tokenEstimate
+        string embeddingModel
+        number embeddingDimensions
+        Float32Array embedding
+        timestamp createdAt
+    }
+    attachments "1" --> "0..*" chunks : id to attachmentId
+  `;
+  try {
+    const { svg, bindFunctions } = await mermaid.render(
+      `mermaid-database-schema-${crypto.randomUUID()}`,
+      source
+    );
+    databaseElements.schemaDiagram.innerHTML = svg;
+    databaseElements.schemaDiagram.classList.remove("failed");
+    databaseElements.schemaDiagram.classList.add("rendered");
+    bindFunctions?.(databaseElements.schemaDiagram);
+  } catch (error) {
+    databaseElements.schemaDiagram.textContent = "Could not render the database relationship diagram.";
+    databaseElements.schemaDiagram.classList.add("failed");
+    console.error("Could not render the database schema.", error);
+  }
+}
+
 function renderDatabaseTable() {
   if (!databaseSnapshot) return;
   const store = databaseSnapshot.stores[activeDatabaseStore];
@@ -357,10 +410,11 @@ async function loadDatabaseExplorer({ force = false } = {}) {
     databaseElements.recordCount.textContent = recordCount.toLocaleString();
     databaseElements.storageSize.textContent = formatByteSize(approximateBytes);
     databaseElements.version.textContent = `${databaseSnapshot.name} · v${databaseSnapshot.version}`;
-    databaseElements.attachmentsSchemaCount.textContent = `${attachments.length} ${attachments.length === 1 ? "row" : "rows"}`;
-    databaseElements.chunksSchemaCount.textContent = `${chunks.length} ${chunks.length === 1 ? "row" : "rows"}`;
+    databaseElements.schemaCounts.textContent =
+      `attachments: ${attachments.length.toLocaleString()} · chunks: ${chunks.length.toLocaleString()}`;
     databaseElements.attachmentsTabCount.textContent = attachments.length.toLocaleString();
     databaseElements.chunksTabCount.textContent = chunks.length.toLocaleString();
+    await renderDatabaseSchema();
     renderDatabaseTable();
   } catch (error) {
     databaseElements.status.textContent = "Could not read IndexedDB";

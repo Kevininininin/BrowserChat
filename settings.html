@@ -288,38 +288,19 @@ flowchart TD
           <section class="database-schema-card">
             <div class="database-section-heading">
               <div><span class="eyebrow">Relationship view</span><h2>Schema</h2></div>
-              <span id="databaseVersionBadge" class="database-version-badge">BrowserChatRag · v1</span>
-            </div>
-            <div class="database-schema-visual">
-              <article class="schema-table-card">
-                <header><span class="schema-table-icon">T</span><div><strong>attachments</strong><small>File &amp; DOM sources</small></div><b id="attachmentsSchemaCount">0 rows</b></header>
-                <ul>
-                  <li class="primary-key"><code>id</code><span>string</span><b>PK</b></li>
-                  <li><code>chatId</code><span>string</span><b>IDX</b></li>
-                  <li><code>name</code><span>string</span></li>
-                  <li><code>kind</code><span>string</span></li>
-                  <li><code>status</code><span>string</span></li>
-                  <li><code>extractedText</code><span>text</span></li>
-                  <li><code>embeddingModel</code><span>string</span></li>
-                  <li><code>createdAt</code><span>timestamp</span></li>
-                </ul>
-              </article>
-              <div class="schema-relation" aria-label="One attachment has many chunks">
-                <span>1</span><i></i><b>has many</b><i></i><span>∞</span>
+              <div class="database-schema-heading-meta">
+                <span id="databaseSchemaCounts">attachments: 0 · chunks: 0</span>
+                <span id="databaseVersionBadge" class="database-version-badge">BrowserChatRag · v1</span>
               </div>
-              <article class="schema-table-card">
-                <header><span class="schema-table-icon">T</span><div><strong>chunks</strong><small>Embedded text segments</small></div><b id="chunksSchemaCount">0 rows</b></header>
-                <ul>
-                  <li class="primary-key"><code>id</code><span>string</span><b>PK</b></li>
-                  <li><code>attachmentId</code><span>string</span><b>FK</b></li>
-                  <li><code>chatId</code><span>string</span><b>IDX</b></li>
-                  <li><code>chunkIndex</code><span>number</span></li>
-                  <li><code>text</code><span>text</span></li>
-                  <li><code>tokenEstimate</code><span>number</span></li>
-                  <li><code>embedding</code><span>Float32Array</span></li>
-                  <li><code>createdAt</code><span>timestamp</span></li>
-                </ul>
-              </article>
+            </div>
+            <div class="database-er-canvas" aria-label="Entity relationship diagram showing attachments.id related to chunks.attachmentId">
+              <div id="databaseSchemaDiagram" class="settings-mermaid database-schema-diagram"></div>
+            </div>
+            <div class="database-schema-note">
+              <span><b>1</b> Exactly one attachment</span>
+              <span><b>0..*</b> Zero or many chunks</span>
+              <span>Logical foreign key: <code>chunks.attachmentId → attachments.id</code></span>
+              <span>Relationship enforced by BrowserChat, not IndexedDB</span>
             </div>
           </section>
 

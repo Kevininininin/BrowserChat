@@ -253,11 +253,24 @@
   }
 
   async function retrieve(chatId, query, { signal } = {}) {
-    if (!settings.enabled || !query.trim()) {
+    if (!settings.enabled || !chatId || !query.trim()) {
       return { chunks: [], sources: [], context: "" };
     }
-    const allChunks = (await BrowserChatRagDatabase.getChunksByChat(chatId))
-      .filter((chunk) => chunk.embeddingModel === settings.embeddingModel);
+    const [chatAttachments, chatChunks] = await Promise.all([
+      BrowserChatRagDatabase.getAttachmentsByChat(chatId),
+      BrowserChatRagDatabase.getChunksByChat(chatId)
+    ]);
+    const chatAttachmentIds = new Set(
+      chatAttachments
+        .filter((attachment) => attachment.chatId === chatId)
+        .map((attachment) => attachment.id)
+    );
+    const allChunks = chatChunks.filter(
+      (chunk) =>
+        chunk.chatId === chatId &&
+        chatAttachmentIds.has(chunk.attachmentId) &&
+        chunk.embeddingModel === settings.embeddingModel
+    );
     if (!allChunks.length) return { chunks: [], sources: [], context: "" };
 
     const [queryVector] = await requestEmbeddings([query], signal);
