@@ -44,6 +44,7 @@ const elements = {
   currentChatFavicon: document.querySelector("#currentChatFavicon"),
   currentChatTitle: document.querySelector("#currentChatTitle"),
   newChatButton: document.querySelector("#newChatButton"),
+  settingsButton: document.querySelector("#settingsButton"),
   siteAccessBanner: document.querySelector("#siteAccessBanner"),
   siteAccessTitle: document.querySelector("#siteAccessTitle"),
   siteAccessDescription: document.querySelector("#siteAccessDescription"),
@@ -3052,6 +3053,10 @@ elements.contextPreviewDialog.addEventListener("click", (event) => {
 });
 
 elements.newChatButton.addEventListener("click", () => void startNewChat());
+elements.settingsButton.addEventListener("click", () => {
+  setChatMenu(false);
+  void chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
+});
 
 for (const suggestion of elements.suggestions) {
   suggestion.addEventListener("click", () => {

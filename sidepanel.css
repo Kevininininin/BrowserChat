@@ -169,7 +169,8 @@ select {
 }
 
 .chat-menu-item,
-.new-chat-menu-item {
+.new-chat-menu-item,
+.settings-menu-item {
   display: flex;
   align-items: center;
   width: 100%;
@@ -298,6 +299,36 @@ select {
 
 .new-chat-menu-item {
   min-height: 40px;
+  margin-bottom: 5px;
+  padding: 7px 10px;
+  gap: 10px;
+  color: #454541;
+  font-size: 12px;
+  font-weight: 620;
+  border-bottom: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
+}
+
+.new-chat-menu-item:hover,
+.new-chat-menu-item:focus-visible,
+.settings-menu-item:hover,
+.settings-menu-item:focus-visible {
+  background: var(--surface-hover);
+}
+
+.new-chat-menu-item svg,
+.settings-menu-item svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.settings-menu-item {
+  min-height: 40px;
   margin-top: 5px;
   padding: 7px 10px;
   gap: 10px;
@@ -306,20 +337,6 @@ select {
   font-weight: 620;
   border-top: 1px solid var(--border);
   border-radius: 0 0 9px 9px;
-}
-
-.new-chat-menu-item:hover,
-.new-chat-menu-item:focus-visible {
-  background: var(--surface-hover);
-}
-
-.new-chat-menu-item svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-width: 1.8;
 }
 
 .header-actions {

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings · BrowserChat</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <div class="settings-shell">
+      <aside class="settings-sidebar">
+        <div class="brand">
+          <img src="assets/icon-32.png" alt="" />
+          <div>
+            <strong>BrowserChat</strong>
+            <span>Settings</span>
+          </div>
+        </div>
+        <nav class="settings-tabs" aria-label="Settings">
+          <button class="settings-tab active" type="button" role="tab" aria-selected="true" data-panel="architecture">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="6" rx="1.5"/>
+              <rect x="14" y="15" width="7" height="6" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="6" rx="1.5"/>
+              <path d="M10 6h4M17.5 9v6"/>
+            </svg>
+            <span>Agent Architecture</span>
+          </button>
+        </nav>
+        <p class="sidebar-note">More settings will appear here as BrowserChat grows.</p>
+      </aside>
+
+      <main class="settings-content">
+        <section id="architecture" class="settings-panel" role="tabpanel">
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Agent orchestration</span>
+              <h1>Agent Architecture</h1>
+              <p>How a prompt moves through BrowserChat, Ollama, and local tools before an answer reaches you.</p>
+            </div>
+            <div class="local-badge">
+              <span></span>
+              Runs locally
+            </div>
+          </header>
+
+          <div class="architecture-card">
+            <div class="diagram-key" aria-label="Diagram legend">
+              <span><i class="key-dot input"></i>Input</span>
+              <span><i class="key-dot model"></i>Model</span>
+              <span><i class="key-dot tool"></i>Tool runtime</span>
+              <span><i class="key-dot output"></i>Output</span>
+            </div>
+
+            <div class="flow-canvas" aria-label="Agent tool calling flow">
+              <pre class="mermaid">
+flowchart TD
+    A["User submits a prompt"] --> B["Build conversation messages"]
+    B --> C["Send messages and all tool schemas to Ollama"]
+    C --> D{"Did Ollama request tools?"}
+    D -- No --> E["Display and save final answer"]
+    D -- Yes --> F["Look up each tool by name"]
+    F --> G["Execute tool functions"]
+    G --> H["Append tool results as role: tool messages"]
+    H --> C
+
+    classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
+    classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
+    classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
+    classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
+    class A,B input
+    class C,D model
+    class F,G,H tool
+    class E output
+              </pre>
+            </div>
+          </div>
+
+          <div class="architecture-notes">
+            <article><strong>Model decides</strong><span>Ollama can request zero, one, or multiple tools in a round.</span></article>
+            <article><strong>Tools stay local</strong><span>BrowserChat executes registered functions inside the extension.</span></article>
+            <article><strong>Loop is bounded</strong><span>The agent repeats until it has a final response or reaches its safety limit.</span></article>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="assets/vendor/mermaid.min.js"></script>
+    <script src="settings.js"></script>
+  </body>
+</html>
