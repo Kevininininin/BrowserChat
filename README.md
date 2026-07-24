@@ -1,6 +1,6 @@
-# Pagewise
+# BrowserChat
 
-Pagewise is a small Manifest V3 Chrome extension that opens in the browser side panel. It captures the active tab's DOM, combines it with your prompt, and streams the response from a locally running Ollama model.
+BrowserChat is a small Manifest V3 Chrome extension that opens in the browser side panel. It captures the active tab's DOM, combines it with your prompt, and streams the response from a locally running Ollama model.
 
 No page content is sent to a cloud service by this extension.
 
@@ -26,7 +26,7 @@ If you normally launch the Ollama macOS app instead of `ollama serve`, quit it f
 launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"
 ```
 
-To allow only Pagewise instead of all Chrome extensions, load Pagewise once, copy its ID from `chrome://extensions`, and replace `*` with that ID:
+To allow only BrowserChat instead of all Chrome extensions, load BrowserChat once, copy its ID from `chrome://extensions`, and replace `*` with that ID:
 
 ```sh
 OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
@@ -39,7 +39,7 @@ OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
 5. Select this project folder.
-6. Open any normal website and click the Pagewise toolbar icon.
+6. Open any normal website and click the BrowserChat toolbar icon.
 
 The model menu is populated from `http://localhost:11434/api/tags`.
 
@@ -47,12 +47,12 @@ The header keeps separate local chats. Each chat remembers the site and favicon
 where its most recent message was sent. Selecting a chat returns to that saved
 page, reopening it when needed, while the header favicon follows the currently
 active browser tab.
-After the first assistant response, Pagewise asks the selected Ollama model once
+After the first assistant response, BrowserChat asks the selected Ollama model once
 for a short title summarizing the user's first question, with thinking disabled.
 
 ## How it works
 
-On each message, Pagewise:
+On each message, BrowserChat:
 
 1. Uses `chrome.scripting.executeScript` to inspect the live rendered page.
 2. Packages visible viewport text, other rendered page text, headings, and interactive elements such as links, buttons, inputs, dropdowns, labels, constraints, and available options.
@@ -78,7 +78,7 @@ Chrome blocks DOM access on internal pages such as `chrome://extensions`, so use
 
 ## Privacy and permissions
 
-- `tabs`: identify the active site's origin so Pagewise can request access only to that site.
+- `tabs`: identify the active site's origin so BrowserChat can request access only to that site.
 - `scripting`: capture the DOM after the user has approved the active site.
 - Optional HTTP/HTTPS site access: Chrome remembers each origin the user approves.
 - `sidePanel`: host the chatbot beside the active page.

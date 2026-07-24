@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Pagewise",
+  "name": "BrowserChat",
   "version": "0.1.0",
   "description": "A private, local chatbot that can read the page in your active tab.",
   "permissions": [
@@ -22,7 +22,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Open Pagewise"
+    "default_title": "Open BrowserChat"
   },
   "icons": {
     "16": "assets/icon-16.png",

@@ -381,7 +381,7 @@ async function switchToChat(chatId) {
         await chrome.windows.update(tab.windowId, { focused: true });
       }
     } catch {
-      setError("Pagewise could not reopen this chat’s last site.");
+      setError("BrowserChat could not reopen this chat’s last site.");
     }
   } else if (!targetTabId) {
     setError("This chat does not have a sent-from site yet.");
@@ -1072,7 +1072,7 @@ function getSiteDetails(tab) {
       hostname: "",
       originPattern: "",
       restricted: true,
-      reason: "Pagewise cannot identify this page."
+      reason: "BrowserChat cannot identify this page."
     };
   }
 
@@ -1110,7 +1110,7 @@ function getSiteDetails(tab) {
       hostname: "",
       originPattern: "",
       restricted: true,
-      reason: "Pagewise cannot identify this page."
+      reason: "BrowserChat cannot identify this page."
     };
   }
 }
@@ -1192,7 +1192,7 @@ async function refreshSiteAccess(preferredTabId = null) {
       originPattern: "",
       hasAccess: false,
       restricted: true,
-      reason: "Pagewise could not check access for this page."
+      reason: "BrowserChat could not check access for this page."
     };
   }
 
@@ -1219,7 +1219,7 @@ async function requestCurrentSiteAccess() {
     }
     return granted;
   } catch (error) {
-    setError(error.message || "Pagewise could not request access to this site.");
+    setError(error.message || "BrowserChat could not request access to this site.");
     return false;
   } finally {
     elements.allowSiteButton.textContent = "Allow";
@@ -1917,7 +1917,7 @@ async function captureActivePageContext(
 
 function buildOllamaMessages(prompt, page = null) {
   const systemPrompt = [
-    "You are Pagewise, a concise and helpful assistant running locally in the user's browser.",
+    "You are BrowserChat, a concise and helpful assistant running locally in the user's browser.",
     page
       ? "Answer the user's question using the supplied structured page context as your primary source."
       : "No page context is attached to this message. Answer from the conversation and your general knowledge.",
@@ -1973,8 +1973,8 @@ async function refreshContextPreview() {
   if (previewMode !== "stored") {
     elements.previewDescription.textContent = previewMode === "configure"
       ? captureConfiguration?.mode === "element"
-        ? "Preview the rendered text and controls Pagewise will package from only the selected section."
-        : "Preview how much rendered DOM text Pagewise will package locally with the selected limit."
+        ? "Preview the rendered text and controls BrowserChat will package from only the selected section."
+        : "Preview how much rendered DOM text BrowserChat will package locally with the selected limit."
       : "This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.";
   }
   elements.refreshPreviewButton.hidden = false;
@@ -2005,7 +2005,7 @@ async function refreshContextPreview() {
   } catch (error) {
     if (captureSequence !== previewCaptureSequence) return;
     elements.contextPreviewContent.textContent =
-      error.message || "Pagewise could not capture this page.";
+      error.message || "BrowserChat could not capture this page.";
     elements.previewStats.textContent = "Capture failed";
   } finally {
     if (captureSequence !== previewCaptureSequence) return;
@@ -2105,7 +2105,7 @@ function openDomConfiguration(scope) {
   elements.previewDescription.textContent =
     domConfigurationDraft?.mode === "element"
       ? "Preview the rendered text and controls from only the selected section."
-      : "Preview how much rendered DOM text Pagewise will package locally with the selected limit.";
+      : "Preview how much rendered DOM text BrowserChat will package locally with the selected limit.";
   if (!elements.contextPreviewDialog.open) {
     elements.contextPreviewDialog.showModal();
   }
@@ -2635,7 +2635,7 @@ elements.selectElementButton.addEventListener("click", async () => {
       domConfigurationDraft.selectedElement = selectedElement;
     }
   } catch (error) {
-    setError(error.message || "Pagewise could not start element selection.");
+    setError(error.message || "BrowserChat could not start element selection.");
   } finally {
     elements.selectElementButton.disabled = false;
     if (
