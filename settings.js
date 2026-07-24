@@ -55,7 +55,9 @@ const databaseElements = {
   storageSize: document.querySelector("#databaseStorageSize"),
   version: document.querySelector("#databaseVersionBadge"),
   schemaCounts: document.querySelector("#databaseSchemaCounts"),
-  schemaDiagram: document.querySelector("#databaseSchemaDiagram"),
+  dbmlCode: document.querySelector("#databaseDbmlCode"),
+  copyDbml: document.querySelector("#copyDatabaseDbmlButton"),
+  openDiagram: document.querySelector("#openDatabaseDiagramButton"),
   attachmentsTabCount: document.querySelector("#attachmentsTabCount"),
   chunksTabCount: document.querySelector("#chunksTabCount"),
   tabs: [...document.querySelectorAll("[data-database-store]")],
@@ -129,10 +131,7 @@ async function renderMermaidIn(container) {
   }
 
   for (const diagram of container.querySelectorAll(".settings-mermaid:not(.rendered)")) {
-    if (
-      diagram.id === "runtimeArchitectureDiagram" ||
-      diagram.id === "databaseSchemaDiagram"
-    ) continue;
+    if (diagram.id === "runtimeArchitectureDiagram") continue;
     const source = diagram.textContent.trim();
     try {
       const { svg, bindFunctions } = await mermaid.render(
@@ -308,54 +307,64 @@ function databaseCellMarkup(key, value) {
   return `<span class="${className}" title="${escapeHtml(serialized)}">${escapeHtml(serialized)}</span>`;
 }
 
-async function renderDatabaseSchema() {
-  if (!databaseSnapshot || !databaseElements.schemaDiagram) return;
-  const source = `
-classDiagram
-    direction LR
-    class attachments {
-        string id [PK]
-        string chatId [IDX]
-        string name
-        string kind
-        string status
-        string mimeType
-        number chunkCount
-        string extractedText
-        string embeddingModel
-        timestamp createdAt
-        timestamp updatedAt
-    }
-    class chunks {
-        string id [PK]
-        string attachmentId [FK]
-        string chatId [IDX]
-        string attachmentName
-        string attachmentKind
-        number chunkIndex
-        string text
-        number tokenEstimate
-        string embeddingModel
-        number embeddingDimensions
-        Float32Array embedding
-        timestamp createdAt
-    }
-    attachments "1" --> "0..*" chunks : id to attachmentId
-  `;
-  try {
-    const { svg, bindFunctions } = await mermaid.render(
-      `mermaid-database-schema-${crypto.randomUUID()}`,
-      source
-    );
-    databaseElements.schemaDiagram.innerHTML = svg;
-    databaseElements.schemaDiagram.classList.remove("failed");
-    databaseElements.schemaDiagram.classList.add("rendered");
-    bindFunctions?.(databaseElements.schemaDiagram);
-  } catch (error) {
-    databaseElements.schemaDiagram.textContent = "Could not render the database relationship diagram.";
-    databaseElements.schemaDiagram.classList.add("failed");
-    console.error("Could not render the database schema.", error);
+function getDatabaseDbml() {
+  return `// BrowserChatRag · IndexedDB schema
+// Relationship is maintained by BrowserChat; IndexedDB has no native foreign-key constraints.
+
+Table attachments {
+  id varchar [pk]
+  chatId varchar
+  name varchar
+  mimeType varchar
+  kind varchar
+  status varchar
+  chunkCount integer
+  extractedText text
+  extractionMetadata json
+  sourceMetadata json
+  warnings json
+  blob blob
+  embeddingModel varchar
+  createdAt bigint
+  updatedAt bigint
+
+  Indexes {
+    chatId
+    (chatId, createdAt)
   }
+}
+
+Table chunks {
+  id varchar [pk]
+  chatId varchar
+  attachmentId varchar [ref: > attachments.id]
+  attachmentName varchar
+  attachmentKind varchar
+  chunkIndex integer
+  text text
+  tokenEstimate integer
+  embeddingModel varchar
+  embeddingDimensions integer
+  embedding json
+  sourceMetadata json
+  createdAt bigint
+
+  Indexes {
+    chatId
+    attachmentId
+    (attachmentId, chunkIndex) [unique]
+  }
+}`;
+}
+
+function renderDatabaseSchema() {
+  databaseElements.dbmlCode.textContent = getDatabaseDbml();
+}
+
+function getDbdiagramUrl() {
+  const dbml = getDatabaseDbml();
+  const base64 = btoa(unescape(encodeURIComponent(dbml)));
+  return `https://dbdiagram.io/embed#c=${encodeURIComponent(base64)}`;
 }
 
 function renderDatabaseTable() {
@@ -435,6 +444,20 @@ databaseElements.tabs.forEach((tab) => {
 });
 databaseElements.search.addEventListener("input", renderDatabaseTable);
 databaseElements.refresh.addEventListener("click", () => loadDatabaseExplorer({ force: true }));
+databaseElements.copyDbml.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(getDatabaseDbml());
+    databaseElements.copyDbml.textContent = "Copied";
+  } catch {
+    databaseElements.copyDbml.textContent = "Copy unavailable";
+  }
+  window.setTimeout(() => {
+    databaseElements.copyDbml.textContent = "Copy DBML";
+  }, 1600);
+});
+databaseElements.openDiagram.addEventListener("click", () => {
+  window.open(getDbdiagramUrl(), "_blank", "noopener,noreferrer");
+});
 
 function formatParameterType(property = {}) {
   if (Array.isArray(property.enum)) return property.enum.join(" · ");

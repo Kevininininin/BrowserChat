@@ -293,12 +293,16 @@ flowchart TD
                 <span id="databaseVersionBadge" class="database-version-badge">BrowserChatRag · v1</span>
               </div>
             </div>
-            <div class="database-er-canvas" aria-label="Entity relationship diagram showing attachments.id related to chunks.attachmentId">
-              <div id="databaseSchemaDiagram" class="settings-mermaid database-schema-diagram"></div>
+            <div class="database-dbml-toolbar">
+              <span>DBML generated from the BrowserChat IndexedDB schema</span>
+              <div>
+                <button id="copyDatabaseDbmlButton" class="settings-secondary-button" type="button">Copy DBML</button>
+                <button id="openDatabaseDiagramButton" class="settings-primary-button" type="button">Open in dbdiagram.io</button>
+              </div>
             </div>
+            <pre id="databaseDbmlCode" class="database-dbml-code" aria-label="DBML schema definition"></pre>
             <div class="database-schema-note">
-              <span><b>1</b> Exactly one attachment</span>
-              <span><b>0..*</b> Zero or many chunks</span>
+              <span><b>1:n</b> <code>attachments.id → chunks.attachmentId</code></span>
               <span>Logical foreign key: <code>chunks.attachmentId → attachments.id</code></span>
               <span>Relationship enforced by BrowserChat, not IndexedDB</span>
             </div>

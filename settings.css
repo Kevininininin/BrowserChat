@@ -559,51 +559,36 @@ h1 {
   border-radius: 7px;
 }
 
-.database-er-canvas {
-  min-height: 470px;
-  padding: 24px;
-  overflow: auto;
-  background:
-    radial-gradient(#deded9 0.7px, transparent 0.7px),
-    linear-gradient(180deg, #fdfdfb, #fafaf8);
-  background-size: 16px 16px, auto;
+.database-dbml-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 9px;
+  background: #fafaf8;
   border: 1px solid #e2e1dc;
-  border-radius: 12px;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
 }
-
-.database-schema-diagram {
-  display: grid;
-  min-width: 720px;
-  min-height: 420px;
-  place-items: center;
-}
-
-.database-schema-diagram svg {
-  width: 100%;
-  max-width: 1040px;
-  height: auto;
-}
-
-.database-schema-diagram .entityBox,
-.database-schema-diagram .classGroup rect {
-  fill: #fff !important;
-  stroke: #cecec8 !important;
-  filter: drop-shadow(0 6px 12px rgb(32 32 24 / 6%));
-}
-
-.database-schema-diagram .attributeBoxOdd,
-.database-schema-diagram .attributeBoxEven {
-  fill: #fff !important;
-  stroke: #e4e3de !important;
-}
-
-.database-schema-diagram .relationshipLine {
-  stroke: #388a58 !important;
-  stroke-width: 1.7px !important;
-}
-
-.database-schema-diagram .classGroup line {
-  stroke: #e4e3de !important;
+.database-dbml-toolbar > div { display: flex; flex-shrink: 0; gap: 7px; }
+.database-dbml-toolbar button { padding: 7px 9px; font-size: 9px; }
+.database-dbml-code {
+  min-height: 390px;
+  max-height: 560px;
+  margin: 0;
+  padding: 19px 20px;
+  overflow: auto;
+  color: #30302c;
+  font: 10px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+  background:
+    linear-gradient(90deg, rgb(56 138 88 / 7%) 1px, transparent 1px),
+    #fff;
+  background-size: 34px 34px;
+  border: 1px solid #e2e1dc;
+  border-radius: 0 0 12px 12px;
 }
 
 .database-schema-note {
