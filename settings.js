@@ -30,6 +30,7 @@ const promptElements = {
 const toolElements = {
   count: document.querySelector("#toolCount"),
   list: document.querySelector("#toolsList"),
+  contextList: document.querySelector("#contextToolsList"),
   emptyState: document.querySelector("#toolsEmptyState")
 };
 const ragElements = {
@@ -677,7 +678,8 @@ function formatParameterType(property = {}) {
 
 function renderTools() {
   const schemas = BrowserChatTools.getSchemas();
-  toolElements.count.textContent = String(schemas.length);
+  const contextTools = BrowserChatCapabilities.getContextTools();
+  toolElements.count.textContent = String(schemas.length + contextTools.length);
   toolElements.emptyState.hidden = schemas.length > 0;
   toolElements.list.innerHTML = schemas.map((schema) => {
     const definition = schema.function || {};
@@ -715,6 +717,27 @@ function renderTools() {
       </article>
     `;
   }).join("");
+
+  toolElements.contextList.innerHTML = contextTools.map((tool) => `
+    <article class="tool-card">
+      <div class="tool-card-header">
+        <div class="tool-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h5"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg>
+        </div>
+        <div>
+          <div class="tool-name-row">
+            <code>${escapeHtml(tool.name)}</code>
+            <span>${escapeHtml(tool.availability)}</span>
+          </div>
+          <p>${escapeHtml(tool.description)}</p>
+        </div>
+      </div>
+      <div class="tool-parameters">
+        <strong>Uses</strong>
+        <ul>${tool.inputs.map((input) => `<li><div><code>${escapeHtml(input)}</code></div></li>`).join("")}</ul>
+      </div>
+    </article>
+  `).join("");
 }
 
 renderTools();

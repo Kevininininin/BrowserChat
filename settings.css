@@ -993,6 +993,10 @@ h1 {
 }
 
 .tools-list { display: grid; gap: 12px; }
+.tools-section { margin-top: 28px; }
+.tools-section-heading { margin: 0 0 12px; }
+.tools-section-heading h2 { margin: 0; font-size: 13px; }
+.tools-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .tool-card {
   overflow: hidden;
   background: var(--surface);
