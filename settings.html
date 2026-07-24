@@ -17,25 +17,40 @@
           </div>
         </div>
         <nav class="settings-tabs" aria-label="Settings">
-          <button class="settings-tab active" type="button" role="tab" aria-selected="true" data-panel="architecture">
+          <button class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="runtime" data-panel="runtime">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="3" width="7" height="6" rx="1.5"/>
               <rect x="14" y="15" width="7" height="6" rx="1.5"/>
               <rect x="14" y="3" width="7" height="6" rx="1.5"/>
               <path d="M10 6h4M17.5 9v6"/>
             </svg>
-            <span>Agent Architecture</span>
+            <span>Agent Runtime</span>
+          </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="formats" data-panel="formats">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5h16M4 12h10M4 19h7"/>
+              <rect x="16" y="10" width="5" height="5" rx="1"/>
+              <path d="m17.5 17.5 1.5 1.5 2.5-3"/>
+            </svg>
+            <span>Response Formats</span>
+          </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="system-prompt" data-panel="system-prompt">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>
+              <path d="m15.5 16 1.5 1.5 3-3"/>
+            </svg>
+            <span>System Prompt</span>
           </button>
         </nav>
         <p class="sidebar-note">More settings will appear here as BrowserChat grows.</p>
       </aside>
 
       <main class="settings-content">
-        <section id="architecture" class="settings-panel" role="tabpanel">
+        <section id="runtime" class="settings-panel" role="tabpanel">
           <header class="panel-header">
             <div>
               <span class="eyebrow">Agent orchestration</span>
-              <h1>Agent Architecture</h1>
+              <h1>Agent Runtime</h1>
               <p>How a prompt moves through BrowserChat, Ollama, and local tools before an answer reaches you.</p>
             </div>
             <div class="local-badge">
@@ -82,8 +97,149 @@ flowchart TD
             <article><strong>Loop is bounded</strong><span>The agent repeats until it has a final response or reaches its safety limit.</span></article>
           </div>
         </section>
+
+        <section id="formats" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Presentation layer</span>
+              <h1>Response Formats</h1>
+              <p>How one model response becomes readable chat content, diagrams, and—eventually—purpose-built interface blocks.</p>
+            </div>
+            <div class="local-badge">
+              <span></span>
+              Safely rendered
+            </div>
+          </header>
+
+          <div class="architecture-card formats-card">
+            <div class="diagram-key" aria-label="Format availability">
+              <span><i class="key-dot available"></i>Available now</span>
+              <span><i class="key-dot planned"></i>Future format</span>
+            </div>
+            <div class="format-canvas" aria-label="Model response format hierarchy">
+              <pre class="settings-mermaid">
+flowchart TD
+    M["Model response"]
+    M --> MD["Plain Markdown"]
+    M --> MT["Markdown table"]
+    M --> MG["Mermaid code block"]
+    M --> UI["Structured UI block"]
+    UI --> DS["Data summary"]
+    UI --> CP["Comparison"]
+    UI --> TL["Timeline"]
+    UI --> SC["Status card"]
+
+    classDef root fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
+    classDef available fill:#eaf6ee,stroke:#87bd98,color:#286c40
+    classDef planned fill:#f2f2ef,stroke:#bdbdb7,color:#666660,stroke-dasharray:5 4
+    class M root
+    class MD,MT,MG available
+    class UI,DS,CP,TL,SC planned
+              </pre>
+            </div>
+          </div>
+
+          <div class="format-notes">
+            <article>
+              <span class="format-status live">Available</span>
+              <strong>Content formats</strong>
+              <p>Markdown, tables, and Mermaid are authored directly in the assistant response and interpreted by the chat renderer.</p>
+            </article>
+            <article>
+              <span class="format-status future">Planned</span>
+              <strong>Structured UI blocks</strong>
+              <p>Validated data objects can later power consistent summaries, comparisons, timelines, and status cards.</p>
+            </article>
+            <article>
+              <span class="format-status rule">Boundary</span>
+              <strong>Tools provide data</strong>
+              <p>Tools retrieve, calculate, or change information. Response formats decide how that information appears in chat.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="system-prompt" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Model behavior</span>
+              <h1>System Prompt</h1>
+              <p>Customize BrowserChat’s core identity and response style. Changes apply to the next message you send.</p>
+            </div>
+            <div id="promptModeBadge" class="prompt-mode-badge default">
+              <span></span>
+              <strong id="promptModeLabel">Default</strong>
+            </div>
+          </header>
+
+          <div class="prompt-editor-card">
+            <div class="prompt-editor-heading">
+              <div>
+                <strong>Core instructions</strong>
+                <span>These instructions are placed first in every Ollama conversation.</span>
+              </div>
+              <span id="promptCharacterCount" class="prompt-character-count">0 characters</span>
+            </div>
+            <label class="prompt-editor-label" for="systemPromptInput">System prompt</label>
+            <textarea
+              id="systemPromptInput"
+              class="system-prompt-input"
+              rows="12"
+              spellcheck="true"
+              aria-describedby="promptEditorHelp"
+            ></textarea>
+            <p id="promptEditorHelp" class="prompt-editor-help">
+              Write direct instructions about identity, tone, priorities, and response behavior. BrowserChat stores this only on your device.
+            </p>
+            <div class="prompt-editor-footer">
+              <span id="promptSaveStatus" class="prompt-save-status" role="status" aria-live="polite">Loaded</span>
+              <div class="prompt-editor-actions">
+                <button id="resetSystemPromptButton" class="settings-secondary-button" type="button">Reset to default</button>
+                <button id="saveSystemPromptButton" class="settings-primary-button" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="advanced-prompts-card" aria-labelledby="advancedPromptsTitle">
+            <span class="managed-label">Advanced · editing is not recommended</span>
+            <h2 id="advancedPromptsTitle">All other text sent to the model</h2>
+            <p>These fields control BrowserChat’s runtime guidance and message wrappers. Empty fields are allowed. Incorrect changes can reduce answer quality, weaken the page-content safety boundary, or make the DOM payload harder for the model to understand.</p>
+
+            <details class="prompt-field-group">
+              <summary><span><strong>Page context and DOM structure</strong><small>Instructions used when page content is included</small></span></summary>
+              <div class="prompt-field-list">
+                <label>Page context instruction<textarea data-prompt-key="pageContextInstruction" rows="3"></textarea></label>
+                <label>No page context instruction<textarea data-prompt-key="noPageContextInstruction" rows="3"></textarea></label>
+                <label>Selected element instruction<textarea data-prompt-key="selectedElementInstruction" rows="3"></textarea></label>
+                <label>DOM structure explanation<textarea data-prompt-key="domStructureInstruction" rows="6"></textarea></label>
+                <label>Untrusted page content instruction<textarea data-prompt-key="untrustedContentInstruction" rows="3"></textarea></label>
+              </div>
+            </details>
+
+            <details class="prompt-field-group">
+              <summary><span><strong>Behavior, tools, and output</strong><small>General instructions appended to the system message</small></span></summary>
+              <div class="prompt-field-list">
+                <label>Visual limitations<textarea data-prompt-key="visualLimitsInstruction" rows="3"></textarea></label>
+                <label>Missing information behavior<textarea data-prompt-key="missingInformationInstruction" rows="3"></textarea></label>
+                <label>Tool behavior<textarea data-prompt-key="toolInstruction" rows="5"></textarea></label>
+                <label>Markdown formatting<textarea data-prompt-key="markdownInstruction" rows="4"></textarea></label>
+                <label>Mermaid diagrams<textarea data-prompt-key="mermaidInstruction" rows="7"></textarea></label>
+              </div>
+            </details>
+
+            <details class="prompt-field-group">
+              <summary><span><strong>Structured message wrappers</strong><small>Literal text placed around the JSON DOM payload and question</small></span></summary>
+              <div class="prompt-field-list wrapper-fields">
+                <label>Page context opening text<textarea data-prompt-key="pageContextOpen" rows="2"></textarea></label>
+                <label>Page context closing text<textarea data-prompt-key="pageContextClose" rows="2"></textarea></label>
+                <label>User question opening text<textarea data-prompt-key="userQuestionOpen" rows="2"></textarea></label>
+                <label>User question closing text<textarea data-prompt-key="userQuestionClose" rows="2"></textarea></label>
+              </div>
+            </details>
+          </section>
+        </section>
       </main>
     </div>
+    <script src="config/system-prompt.js"></script>
     <script src="assets/vendor/mermaid.min.js"></script>
     <script src="settings.js"></script>
   </body>

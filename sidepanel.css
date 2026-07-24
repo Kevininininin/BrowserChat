@@ -891,6 +891,118 @@ select {
   background: transparent;
 }
 
+.assistant .message .mermaid-chat-block {
+  display: grid;
+  min-height: 190px;
+  margin: 0.9em 0 1em;
+  padding: 22px 18px;
+  place-items: center;
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e2e0eb;
+  border-radius: 12px;
+  box-shadow: 0 5px 18px rgb(51 43 87 / 5%);
+}
+
+.assistant .message .mermaid-chat-block.rendered {
+  min-height: 0;
+}
+
+.assistant .message .mermaid-chat-block svg {
+  display: block;
+  width: 100% !important;
+  min-width: min(460px, calc(100vw - 72px));
+  max-width: 760px !important;
+  height: auto;
+  margin: 0 auto;
+  justify-self: stretch;
+}
+
+.assistant .message .mermaid-chat-block .node rect,
+.assistant .message .mermaid-chat-block .node circle,
+.assistant .message .mermaid-chat-block .node ellipse,
+.assistant .message .mermaid-chat-block .node polygon,
+.assistant .message .mermaid-chat-block .node path {
+  fill: #efedff !important;
+  stroke: #8b72f6 !important;
+  stroke-width: 1.2px !important;
+  filter: none !important;
+}
+
+.assistant .message .mermaid-chat-block .flowchart-link,
+.assistant .message .mermaid-chat-block .edgePath path,
+.assistant .message .mermaid-chat-block .mindmap-link,
+.assistant .message .mermaid-chat-block .mindmapDiagram .edge {
+  stroke: #3e3d42 !important;
+  stroke-width: 1.35px !important;
+}
+
+.assistant .message .mermaid-chat-block .mindmap-node line {
+  stroke: #8b72f6 !important;
+  stroke-width: 1.2px !important;
+}
+
+.assistant .message .mermaid-chat-block marker path {
+  fill: #3e3d42 !important;
+  stroke: #3e3d42 !important;
+}
+
+.assistant .message .mermaid-chat-block .nodeLabel,
+.assistant .message .mermaid-chat-block .label,
+.assistant .message .mermaid-chat-block text {
+  color: #2f2d35 !important;
+  fill: #2f2d35 !important;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 14px !important;
+}
+
+.assistant .message .mermaid-chat-block .edgeLabel {
+  color: #4c4953 !important;
+  background: #ffffff !important;
+}
+
+.assistant .message .mermaid-chat-block .edgeLabel rect,
+.assistant .message .mermaid-chat-block .labelBkg {
+  fill: #ffffff !important;
+  opacity: 0.96 !important;
+}
+
+.assistant .message .mermaid-chat-source {
+  display: none;
+  width: 100%;
+  margin: 0;
+  padding: 11px;
+  color: #f2f2ee;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8em;
+  line-height: 1.5;
+  white-space: pre;
+  background: #242422;
+  border-radius: 8px;
+}
+
+.assistant .message .mermaid-chat-status {
+  color: var(--muted);
+  font-size: 0.82em;
+}
+
+.assistant .message .mermaid-chat-block.failed {
+  display: block;
+  padding: 14px;
+  background: #fbfbf9;
+  box-shadow: none;
+}
+
+.assistant .message .mermaid-chat-block.failed .mermaid-chat-source {
+  display: block;
+  overflow-x: auto;
+}
+
+.assistant .message .mermaid-chat-block.failed .mermaid-chat-status {
+  margin-top: 9px;
+  color: #8a4943;
+}
+
 .assistant .message .table-scroll {
   max-width: 100%;
   margin: 0.85em 0 1em;
