@@ -1,18 +1,32 @@
 # BrowserChat
 
-BrowserChat is a small Manifest V3 Chrome extension that opens in the browser side panel. It captures the active tab's DOM, combines it with your prompt, and streams the response from a locally running Ollama model.
+BrowserChat is essentially ChatGPT in a Chrome extension, powered entirely by local Ollama models and able to understand the page open in your browser. In a nutshell, it brings an Open WebUI-style experience into Chrome's side panel, with extensible skills and tools that open the door to many more workflows.
 
-No page content is sent to a cloud service by this extension.
+The extension captures the active tab's DOM, combines that page context with
+your prompt, and streams the response from Ollama. No page content is sent to a
+cloud service by BrowserChat.
 
 ## Requirements
 
 - Google Chrome 114 or newer
 - [Ollama](https://ollama.com/) running locally
-- At least one Ollama model, for example:
+- At least one Ollama model
+
+## Installation
+
+### 1. Install Ollama and a model
+
+Install [Ollama](https://ollama.com/download), then pull a model. For a smaller
+Gemma model, for example:
 
 ```sh
-ollama pull gemma3:4b
+ollama pull gemma4:e4b
 ```
+
+For the best experience, we suggest Gemma 4 26B if your computer has enough
+memory to run it comfortably.
+
+### 2. Allow the extension to connect to Ollama
 
 Ollama requires browser-extension origins to be explicitly allowed. Before opening Ollama, set:
 
@@ -32,16 +46,20 @@ To allow only BrowserChat instead of all Chrome extensions, load BrowserChat onc
 OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
 ```
 
-## Install in Chrome
+### 3. Load BrowserChat in Chrome
 
-1. Start Ollama with the extension origin allowed as shown above.
-2. Open `chrome://extensions`.
-3. Turn on **Developer mode**.
-4. Click **Load unpacked**.
-5. Select this project folder.
-6. Open any normal website and click the BrowserChat toolbar icon.
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode**.
+3. Click **Load unpacked**.
+4. Select this project folder.
+5. Open a normal website and click the BrowserChat toolbar icon to open the
+   side panel.
 
-The model menu is populated from `http://localhost:11434/api/tags`.
+BrowserChat requires no package installation or build step. The model menu is
+populated automatically from the models available at
+`http://localhost:11434/api/tags`.
+
+## Features
 
 The header keeps separate local chats. Each chat remembers the site and favicon
 where its most recent message was sent. Selecting a chat returns to that saved
