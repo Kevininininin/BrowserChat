@@ -92,6 +92,42 @@
     );
   }
 
+  async function getAll(storeName) {
+    if (![ATTACHMENTS, CHUNKS].includes(storeName)) {
+      throw new Error(`Unknown BrowserChat RAG store: ${storeName}`);
+    }
+    const database = await open();
+    const transaction = database.transaction(storeName, "readonly");
+    return requestAsPromise(transaction.objectStore(storeName).getAll());
+  }
+
+  async function inspect() {
+    const database = await open();
+    const stores = {};
+    for (const storeName of [ATTACHMENTS, CHUNKS]) {
+      const transaction = database.transaction(storeName, "readonly");
+      const store = transaction.objectStore(storeName);
+      stores[storeName] = {
+        name: storeName,
+        keyPath: store.keyPath,
+        indexes: [...store.indexNames].map((indexName) => {
+          const index = store.index(indexName);
+          return {
+            name: index.name,
+            keyPath: index.keyPath,
+            unique: index.unique
+          };
+        }),
+        records: await requestAsPromise(store.getAll())
+      };
+    }
+    return {
+      name: database.name,
+      version: database.version,
+      stores
+    };
+  }
+
   async function deleteAttachment(id) {
     const database = await open();
     const transaction = database.transaction(
@@ -128,6 +164,8 @@
     getAttachmentsByChat,
     replaceChunks,
     getChunksByChat,
+    getAll,
+    inspect,
     deleteAttachment,
     deleteChat
   });

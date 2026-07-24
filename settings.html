@@ -41,6 +41,13 @@
             </svg>
             <span>Files &amp; RAG</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="database" data-panel="database">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16v13H4zM4 10h16M9 6v13"/>
+              <path d="M6.5 13h.01M6.5 16h.01M12 13h5M12 16h3"/>
+            </svg>
+            <span>Local Database</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="skills" data-panel="skills">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
@@ -114,6 +121,60 @@
             </div>
             <div class="local-badge"><span></span>Stored locally</div>
           </header>
+
+          <div class="architecture-card rag-architecture-card">
+            <div class="diagram-key" aria-label="RAG diagram legend">
+              <span><i class="key-dot input"></i>Source or query</span>
+              <span><i class="key-dot model"></i>Ollama embedding</span>
+              <span><i class="key-dot tool"></i>Local processing</span>
+              <span><i class="key-dot output"></i>Agent context</span>
+            </div>
+            <div class="flow-canvas rag-flow-canvas" aria-label="File indexing and retrieval flow">
+              <div id="ragArchitectureDiagram" class="settings-mermaid">
+flowchart TD
+    subgraph IX["Index once per chat source"]
+      direction LR
+      F["Uploaded file"] --> X["Extract text by file type"]
+      D["Captured page DOM"] --> X
+      X --> C["Split into overlapping chunks"]
+      C --> E["Batch chunks to Ollama /api/embed"]
+      E --> DB[("IndexedDB: source, text, metadata, vectors")]
+    end
+
+    subgraph RT["Retrieve for every submitted prompt"]
+      direction LR
+      Q["User prompt"] --> QE["Embed query with the same model"]
+      DB --> S["Load vectors for this chat and embedding model"]
+      QE --> S
+      S --> K["Score similarity, filter, and keep Top K"]
+      K --> N["Expand neighboring chunks"]
+      N --> B["Apply final chunk count and token budget"]
+      B --> RC["Format retrieved context and source references"]
+    end
+
+    Q --> SS["Select skills from the original user prompt"]
+    RC --> M["Build system, history, retrieved context, and user message"]
+    SS --> M
+    M --> A["Run the agent tool-calling loop"]
+    A --> O["Answer with source chips"]
+
+    classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
+    classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
+    classDef local fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
+    classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
+    class F,D,Q input
+    class E,QE model
+    class X,C,DB,S,K,N,B local
+    class RC,SS,M,A,O output
+              </div>
+            </div>
+          </div>
+
+          <div class="architecture-notes rag-architecture-notes">
+            <article><strong>Chat-scoped storage</strong><span>Only chunks indexed for the active chat are eligible for retrieval.</span></article>
+            <article><strong>Model consistency</strong><span>Retrieval ignores chunks created by a different embedding model, so changed models require re-indexing.</span></article>
+            <article><strong>Prompt-time grounding</strong><span>Selected passages enter the user message before the normal skill and tool-calling runtime.</span></article>
+          </div>
 
           <form id="ragSettingsForm" class="rag-settings-grid">
             <section class="rag-settings-card">
@@ -203,6 +264,99 @@
               <button class="settings-primary-button" type="submit">Save changes</button>
             </div>
           </form>
+        </section>
+
+        <section id="database" class="settings-panel database-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">IndexedDB explorer</span>
+              <h1>Local Database</h1>
+              <p>Inspect BrowserChat’s on-device RAG schema and every record stored in it. Data never leaves this browser.</p>
+            </div>
+            <button id="refreshDatabaseButton" class="settings-secondary-button database-refresh-button" type="button">
+              Refresh data
+            </button>
+          </header>
+
+          <div id="databaseSummary" class="database-summary" aria-live="polite">
+            <article><span>Database</span><strong>BrowserChatRag</strong><small>IndexedDB</small></article>
+            <article><span>Tables</span><strong>2</strong><small>Object stores</small></article>
+            <article><span>Records</span><strong id="databaseRecordCount">—</strong><small>Across all tables</small></article>
+            <article><span>Storage</span><strong id="databaseStorageSize">—</strong><small>Approximate payload</small></article>
+          </div>
+
+          <section class="database-schema-card">
+            <div class="database-section-heading">
+              <div><span class="eyebrow">Relationship view</span><h2>Schema</h2></div>
+              <span id="databaseVersionBadge" class="database-version-badge">BrowserChatRag · v1</span>
+            </div>
+            <div class="database-schema-visual">
+              <article class="schema-table-card">
+                <header><span class="schema-table-icon">T</span><div><strong>attachments</strong><small>File &amp; DOM sources</small></div><b id="attachmentsSchemaCount">0 rows</b></header>
+                <ul>
+                  <li class="primary-key"><code>id</code><span>string</span><b>PK</b></li>
+                  <li><code>chatId</code><span>string</span><b>IDX</b></li>
+                  <li><code>name</code><span>string</span></li>
+                  <li><code>kind</code><span>string</span></li>
+                  <li><code>status</code><span>string</span></li>
+                  <li><code>extractedText</code><span>text</span></li>
+                  <li><code>embeddingModel</code><span>string</span></li>
+                  <li><code>createdAt</code><span>timestamp</span></li>
+                </ul>
+              </article>
+              <div class="schema-relation" aria-label="One attachment has many chunks">
+                <span>1</span><i></i><b>has many</b><i></i><span>∞</span>
+              </div>
+              <article class="schema-table-card">
+                <header><span class="schema-table-icon">T</span><div><strong>chunks</strong><small>Embedded text segments</small></div><b id="chunksSchemaCount">0 rows</b></header>
+                <ul>
+                  <li class="primary-key"><code>id</code><span>string</span><b>PK</b></li>
+                  <li><code>attachmentId</code><span>string</span><b>FK</b></li>
+                  <li><code>chatId</code><span>string</span><b>IDX</b></li>
+                  <li><code>chunkIndex</code><span>number</span></li>
+                  <li><code>text</code><span>text</span></li>
+                  <li><code>tokenEstimate</code><span>number</span></li>
+                  <li><code>embedding</code><span>Float32Array</span></li>
+                  <li><code>createdAt</code><span>timestamp</span></li>
+                </ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="database-browser-card">
+            <div class="database-browser-toolbar">
+              <div class="database-table-tabs" role="tablist" aria-label="Database tables">
+                <button class="database-table-tab active" type="button" data-database-store="attachments">
+                  attachments <span id="attachmentsTabCount">0</span>
+                </button>
+                <button class="database-table-tab" type="button" data-database-store="chunks">
+                  chunks <span id="chunksTabCount">0</span>
+                </button>
+              </div>
+              <label class="database-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                <input id="databaseSearchInput" type="search" placeholder="Filter records…" />
+              </label>
+            </div>
+            <div class="database-table-meta">
+              <div><strong id="databaseTableTitle">attachments</strong><span id="databaseTableDescription">File and captured DOM source records</span></div>
+              <span id="databaseTableStatus" role="status">Loading…</span>
+            </div>
+            <div class="database-table-scroll">
+              <table class="database-data-table">
+                <thead id="databaseTableHead"></thead>
+                <tbody id="databaseTableBody"></tbody>
+              </table>
+              <div id="databaseEmptyState" class="database-empty-state" hidden>
+                <strong>No records found</strong>
+                <span>Indexed files and captured pages will appear here.</span>
+              </div>
+            </div>
+            <footer class="database-table-footer">
+              <span id="databaseVisibleRows">0 rows</span>
+              <span>Read-only view · refreshes when opened</span>
+            </footer>
+          </section>
         </section>
 
         <section id="skills" class="settings-panel" role="tabpanel" hidden>
@@ -461,6 +615,7 @@ flowchart TD
       </main>
     </div>
     <script src="rag/config.js"></script>
+    <script src="rag/database.js"></script>
     <script src="config/system-prompt.js"></script>
     <script src="skills/registry.js"></script>
     <script src="skills/defaults/mermaid.js"></script>

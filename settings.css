@@ -375,7 +375,28 @@ h1 {
 
 .rag-settings-grid {
   display: grid;
+  margin-top: 16px;
   gap: 16px;
+}
+
+.rag-flow-canvas {
+  min-height: 520px;
+  background:
+    radial-gradient(#d9d9d4 0.7px, transparent 0.7px),
+    linear-gradient(180deg, #fff, #fbfbf8);
+  background-size: 16px 16px, auto;
+}
+
+.rag-flow-canvas .settings-mermaid {
+  min-width: 920px;
+}
+
+.rag-flow-canvas .settings-mermaid svg {
+  max-width: 1180px;
+}
+
+.rag-architecture-notes {
+  margin-bottom: 0;
 }
 
 .rag-settings-card {
@@ -462,6 +483,265 @@ h1 {
   margin-right: auto;
   color: var(--muted);
   font-size: 10px;
+}
+
+.database-panel { max-width: 1280px; }
+.database-refresh-button { margin-top: 7px; white-space: nowrap; }
+
+.database-summary {
+  display: grid;
+  margin-bottom: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.database-summary article {
+  display: grid;
+  min-width: 0;
+  padding: 16px 17px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: 0 5px 18px rgb(32 32 24 / 4%);
+}
+
+.database-summary span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.database-summary strong {
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 18px;
+  letter-spacing: -.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.database-summary small { margin-top: 3px; color: #999892; font-size: 9px; }
+
+.database-schema-card,
+.database-browser-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 9px 28px rgb(32 32 24 / 5%);
+}
+
+.database-schema-card { padding: 20px; }
+.database-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.database-section-heading h2 { margin: 5px 0 0; font-size: 17px; letter-spacing: -.025em; }
+.database-version-badge {
+  padding: 6px 9px;
+  color: #666660;
+  font: 9px ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f3f3f0;
+  border: 1px solid #e2e1dc;
+  border-radius: 7px;
+}
+
+.database-schema-visual {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(250px, 1fr) 150px minmax(250px, 1fr);
+}
+
+.schema-table-card {
+  overflow: hidden;
+  border: 1px solid #dcdcd6;
+  border-radius: 11px;
+}
+
+.schema-table-card header {
+  display: flex;
+  align-items: center;
+  padding: 12px 13px;
+  gap: 10px;
+  background: #fafaf8;
+  border-bottom: 1px solid #e5e4df;
+}
+
+.schema-table-icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  color: #286c40;
+  font: 700 11px ui-monospace, monospace;
+  background: #eaf6ee;
+  border-radius: 7px;
+  place-items: center;
+}
+
+.schema-table-card header div { display: grid; min-width: 0; gap: 2px; }
+.schema-table-card header strong { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.schema-table-card header small { color: var(--muted); font-size: 8px; }
+.schema-table-card header > b {
+  margin-left: auto;
+  color: #85857f;
+  font-size: 8px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.schema-table-card ul { margin: 0; padding: 0; list-style: none; }
+.schema-table-card li {
+  display: grid;
+  min-height: 30px;
+  padding: 7px 11px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  gap: 10px;
+  border-top: 1px solid #efefeb;
+}
+.schema-table-card li:first-child { border-top: 0; }
+.schema-table-card li.primary-key { background: #fbfdfb; }
+.schema-table-card li code { overflow: hidden; color: #33332f; font-size: 9px; text-overflow: ellipsis; }
+.schema-table-card li span { color: #898983; font: 8px ui-monospace, monospace; }
+.schema-table-card li b { color: #a19d95; font-size: 7px; text-align: right; }
+.schema-table-card li.primary-key b { color: #388a58; }
+
+.schema-relation {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 5px;
+  color: #8c8b85;
+}
+.schema-relation i { height: 1px; background: #aaa9a3; }
+.schema-relation span { font: 700 9px ui-monospace, monospace; }
+.schema-relation b {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  color: #999892;
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.database-browser-card { margin-top: 16px; overflow: hidden; }
+.database-browser-toolbar,
+.database-table-meta,
+.database-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.database-browser-toolbar { min-height: 52px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.database-table-tabs { display: flex; align-self: stretch; gap: 4px; }
+.database-table-tab {
+  position: relative;
+  padding: 0 11px;
+  color: #777770;
+  font: 650 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.database-table-tab::after {
+  position: absolute;
+  right: 9px;
+  bottom: -1px;
+  left: 9px;
+  height: 2px;
+  content: "";
+  background: transparent;
+}
+.database-table-tab.active { color: #242422; }
+.database-table-tab.active::after { background: #388a58; }
+.database-table-tab span {
+  margin-left: 5px;
+  padding: 2px 5px;
+  color: #777770;
+  font: 700 8px Inter, sans-serif;
+  background: #eeeeea;
+  border-radius: 999px;
+}
+
+.database-search {
+  display: flex;
+  align-items: center;
+  width: min(260px, 32vw);
+  height: 32px;
+  padding: 0 9px;
+  gap: 7px;
+  background: #fafaf8;
+  border: 1px solid #dcdcd6;
+  border-radius: 8px;
+}
+.database-search svg { width: 14px; fill: none; stroke: #888882; stroke-width: 1.7; }
+.database-search input { width: 100%; padding: 0; font: 10px inherit; background: transparent; border: 0; outline: 0; }
+
+.database-table-meta { padding: 13px 16px; background: #fdfdfb; }
+.database-table-meta > div { display: grid; gap: 3px; }
+.database-table-meta strong { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.database-table-meta div span,
+.database-table-meta > span { color: var(--muted); font-size: 8px; }
+
+.database-table-scroll { position: relative; max-height: 560px; overflow: auto; border-top: 1px solid var(--border); }
+.database-data-table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 9px; }
+.database-data-table th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: 34px;
+  padding: 0 11px;
+  color: #5f5f5a;
+  text-align: left;
+  white-space: nowrap;
+  background: #f2f2ef;
+  border-right: 1px solid #dfded9;
+  border-bottom: 1px solid #d7d6d0;
+}
+.database-data-table th code { font-size: 8px; }
+.database-data-table td {
+  max-width: 310px;
+  height: 37px;
+  padding: 7px 11px;
+  overflow: hidden;
+  color: #41413d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid #ecebe6;
+  border-bottom: 1px solid #ecebe6;
+}
+.database-data-table tbody tr:hover td { background: #fafcf9; }
+.database-data-table .database-row-number {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  width: 42px;
+  min-width: 42px;
+  color: #999892;
+  text-align: center;
+  background: #fafaf8;
+}
+.database-data-table th.database-row-number { z-index: 3; background: #ecece8; }
+.database-long-text { display: block; max-width: 290px; overflow: hidden; text-overflow: ellipsis; }
+.database-json-value { color: #654e8e; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.database-null { color: #aaa9a3; font: italic 8px ui-monospace, monospace; }
+.database-empty-state { padding: 58px 20px; color: var(--muted); text-align: center; }
+.database-empty-state strong { display: block; color: #565650; font-size: 12px; }
+.database-empty-state span { display: block; margin-top: 6px; font-size: 9px; }
+.database-table-footer { padding: 10px 15px; color: #8a8984; font-size: 8px; background: #fafaf8; }
+
+@media (max-width: 980px) {
+  .database-summary { grid-template-columns: repeat(2, 1fr); }
+  .database-schema-visual { grid-template-columns: 1fr; gap: 10px; }
+  .schema-relation { width: 120px; margin: 0 auto; transform: rotate(90deg); }
 }
 
 @media (max-width: 850px) {

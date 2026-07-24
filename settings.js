@@ -49,11 +49,32 @@ const ragElements = {
   reset: document.querySelector("#resetRagSettingsButton"),
   status: document.querySelector("#ragSaveStatus")
 };
+const databaseElements = {
+  refresh: document.querySelector("#refreshDatabaseButton"),
+  recordCount: document.querySelector("#databaseRecordCount"),
+  storageSize: document.querySelector("#databaseStorageSize"),
+  version: document.querySelector("#databaseVersionBadge"),
+  attachmentsSchemaCount: document.querySelector("#attachmentsSchemaCount"),
+  chunksSchemaCount: document.querySelector("#chunksSchemaCount"),
+  attachmentsTabCount: document.querySelector("#attachmentsTabCount"),
+  chunksTabCount: document.querySelector("#chunksTabCount"),
+  tabs: [...document.querySelectorAll("[data-database-store]")],
+  search: document.querySelector("#databaseSearchInput"),
+  title: document.querySelector("#databaseTableTitle"),
+  description: document.querySelector("#databaseTableDescription"),
+  status: document.querySelector("#databaseTableStatus"),
+  head: document.querySelector("#databaseTableHead"),
+  body: document.querySelector("#databaseTableBody"),
+  empty: document.querySelector("#databaseEmptyState"),
+  visibleRows: document.querySelector("#databaseVisibleRows")
+};
 let savedSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let savedPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
 let skillsEnabled = true;
 let skills = [];
 let editingSkillId = null;
+let databaseSnapshot = null;
+let activeDatabaseStore = "attachments";
 
 function activatePanel(panelId, { updateHash = false } = {}) {
   const tab = [...tabs].find((item) => item.dataset.panel === panelId);
@@ -69,6 +90,7 @@ function activatePanel(panelId, { updateHash = false } = {}) {
   if (updateHash) history.replaceState(null, "", `#${panelId}`);
   const activePanel = document.querySelector(`#${panelId}`);
   if (activePanel) void renderMermaidIn(activePanel);
+  if (panelId === "database") void loadDatabaseExplorer();
 }
 
 for (const tab of tabs) {
@@ -130,25 +152,34 @@ if (location.hash) activatePanel(location.hash.slice(1));
 
 const ARCHITECTURE_WITH_SKILLS = `
 flowchart TD
-    A["User submits a prompt"] --> R["Retrieve chat-scoped file and DOM chunks"]
-    R --> B["Build base conversation messages"]
-    B --> C["Create skill-selection context"]
-    C --> D["Ollama selects relevant skills"]
-    D --> E{"Were any skills selected?"}
+    U["Files attached or dropped"] --> V["Extract, chunk, and embed asynchronously"]
+    V --> DB[("Store chat-scoped vectors in IndexedDB")]
+    A["User submits a prompt"] --> W["Await attached-file indexing"]
+    W --> C{"DOM context attached?"}
+    C -- Yes --> D["Capture the active page"]
+    C -- No --> R{"Is RAG enabled?"}
+    D --> R
+    R -- Yes --> X["Index captured DOM, then retrieve relevant chunks"]
+    DB --> X
+    R -- No --> Y["Keep full captured DOM, if any"]
+    X --> S["Ollama selects relevant skills from the user prompt"]
+    Y --> S
+    S --> E{"Were any skills selected?"}
     E -- No --> H["Use base system prompt"]
     E -- Yes --> F["Load selected skill instructions"]
     F --> G["Compose effective system prompt"]
     G --> H
-    H --> I["Attach available tool schemas"]
-    I --> J["Send effective prompt, messages, and tools to Ollama"]
+    H --> B["Build system, history, context, and user messages"]
+    B --> I["Attach registered tool schemas"]
+    I --> J["Send messages and tools to Ollama"]
     J --> K{"Did Ollama request tools?"}
-    K -- No --> L["Display and save final answer"]
+    K -- No --> L["Display and save answer and source references"]
     K -- Yes --> M["Look up each tool by name"]
     M --> P{"Is the tool registered?"}
     P -- No --> Q["Record unsupported tool request"]
     Q --> O
-    P -- Yes --> N["Execute tool functions"]
-    N --> O["Append results as role: tool messages"]
+    P -- Yes --> N["Execute tool function"]
+    N --> O["Append role: tool result messages"]
     O --> J
 
     classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
@@ -156,33 +187,43 @@ flowchart TD
     classDef skill fill:#eaf1fb,stroke:#89a9cf,color:#315b87
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class A,B,R input
-    class C,F,G skill
-    class D,E,H,I,J,K,P model
-    class M,N,O,Q tool
+    class U,A,W,D input
+    class S,F,G skill
+    class C,R,E,H,B,I,J,K,P model
+    class V,DB,X,Y,M,N,O,Q tool
     class L output
 `;
 
 const ARCHITECTURE_WITHOUT_SKILLS = `
 flowchart TD
-    A["User submits a prompt"] --> R["Retrieve chat-scoped file and DOM chunks"]
-    R --> B["Build conversation messages"]
-    B --> C["Attach available tool schemas"]
-    C --> D["Send messages and tools to Ollama"]
+    U["Files attached or dropped"] --> V["Extract, chunk, and embed asynchronously"]
+    V --> DB[("Store chat-scoped vectors in IndexedDB")]
+    A["User submits a prompt"] --> W["Await attached-file indexing"]
+    W --> C{"DOM context attached?"}
+    C -- Yes --> P["Capture the active page"]
+    C -- No --> R{"Is RAG enabled?"}
+    P --> R
+    R -- Yes --> X["Index captured DOM, then retrieve relevant chunks"]
+    DB --> X
+    R -- No --> Y["Keep full captured DOM, if any"]
+    X --> B["Build system, history, context, and user messages"]
+    Y --> B
+    B --> T["Attach registered tool schemas"]
+    T --> D["Send messages and tools to Ollama"]
     D --> E{"Did Ollama request tools?"}
-    E -- No --> F["Display and save final answer"]
+    E -- No --> F["Display and save answer and source references"]
     E -- Yes --> G["Look up each tool by name"]
-    G --> H["Execute tool functions"]
-    H --> I["Append results as role: tool messages"]
+    G --> H["Execute registered tool or record unsupported request"]
+    H --> I["Append role: tool result messages"]
     I --> D
 
     classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
     classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class A,B,R input
-    class C,D,E model
-    class G,H,I tool
+    class U,A,W,P input
+    class C,R,B,T,D,E model
+    class V,DB,X,Y,G,H,I tool
     class F output
 `;
 
@@ -211,6 +252,135 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+function formatByteSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** unitIndex);
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function serializeDatabaseValue(value) {
+  if (value == null) return "";
+  if (value instanceof Blob) return `[Blob ${formatByteSize(value.size)} · ${value.type || "unknown type"}]`;
+  if (ArrayBuffer.isView(value)) {
+    const preview = [...value.slice(0, 6)].map((item) => Number(item).toFixed(4));
+    return `[${preview.join(", ")}${value.length > 6 ? `, … · ${value.length} values` : ""}]`;
+  }
+  if (value instanceof ArrayBuffer) return `[ArrayBuffer ${formatByteSize(value.byteLength)}]`;
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function getDatabaseColumns(records) {
+  const preferred = activeDatabaseStore === "attachments"
+    ? ["id", "chatId", "name", "kind", "status", "mimeType", "chunkCount", "embeddingModel", "createdAt", "updatedAt"]
+    : ["id", "attachmentId", "chatId", "attachmentName", "attachmentKind", "chunkIndex", "text", "tokenEstimate", "embeddingModel", "embeddingDimensions", "embedding", "createdAt"];
+  const keys = new Set(records.flatMap((record) => Object.keys(record)));
+  return [
+    ...preferred.filter((key) => keys.delete(key)),
+    ...[...keys].sort()
+  ];
+}
+
+function databaseCellMarkup(key, value) {
+  if (value == null || value === "") return '<span class="database-null">NULL</span>';
+  if ((key === "createdAt" || key === "updatedAt") && Number.isFinite(Number(value))) {
+    const date = new Date(Number(value));
+    return `<time title="${escapeHtml(date.toISOString())}">${escapeHtml(date.toLocaleString())}</time>`;
+  }
+  const serialized = serializeDatabaseValue(value);
+  const className = key === "text" || key === "extractedText"
+    ? "database-long-text"
+    : typeof value === "object"
+      ? "database-json-value"
+      : "";
+  return `<span class="${className}" title="${escapeHtml(serialized)}">${escapeHtml(serialized)}</span>`;
+}
+
+function renderDatabaseTable() {
+  if (!databaseSnapshot) return;
+  const store = databaseSnapshot.stores[activeDatabaseStore];
+  const query = databaseElements.search.value.trim().toLocaleLowerCase();
+  const filtered = store.records.filter((record) =>
+    !query || serializeDatabaseValue(record).toLocaleLowerCase().includes(query)
+  );
+  const columns = getDatabaseColumns(store.records);
+
+  databaseElements.tabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.databaseStore === activeDatabaseStore);
+  });
+  databaseElements.title.textContent = activeDatabaseStore;
+  databaseElements.description.textContent = activeDatabaseStore === "attachments"
+    ? "File and captured DOM source records"
+    : "Text chunks and embedding vectors linked to attachments";
+  databaseElements.status.textContent = query
+    ? `${filtered.length} of ${store.records.length} records`
+    : `${store.records.length} ${store.records.length === 1 ? "record" : "records"}`;
+  databaseElements.visibleRows.textContent = `${filtered.length} ${filtered.length === 1 ? "row" : "rows"}`;
+  databaseElements.head.innerHTML = columns.length
+    ? `<tr><th class="database-row-number">#</th>${columns.map((key) => `<th><code>${escapeHtml(key)}</code></th>`).join("")}</tr>`
+    : "";
+  databaseElements.body.innerHTML = filtered.map((record, index) => `
+    <tr>
+      <td class="database-row-number">${index + 1}</td>
+      ${columns.map((key) => `<td>${databaseCellMarkup(key, record[key])}</td>`).join("")}
+    </tr>
+  `).join("");
+  databaseElements.empty.hidden = filtered.length > 0;
+  databaseElements.head.closest("table").hidden = filtered.length === 0;
+}
+
+async function loadDatabaseExplorer({ force = false } = {}) {
+  if (databaseSnapshot && !force) {
+    renderDatabaseTable();
+    return;
+  }
+  databaseElements.refresh.disabled = true;
+  databaseElements.status.textContent = "Loading local data…";
+  try {
+    databaseSnapshot = await BrowserChatRagDatabase.inspect();
+    const attachments = databaseSnapshot.stores.attachments.records;
+    const chunks = databaseSnapshot.stores.chunks.records;
+    const recordCount = attachments.length + chunks.length;
+    let approximateBytes = 0;
+    for (const record of [...attachments, ...chunks]) {
+      approximateBytes += new Blob([serializeDatabaseValue(record)]).size;
+    }
+    databaseElements.recordCount.textContent = recordCount.toLocaleString();
+    databaseElements.storageSize.textContent = formatByteSize(approximateBytes);
+    databaseElements.version.textContent = `${databaseSnapshot.name} · v${databaseSnapshot.version}`;
+    databaseElements.attachmentsSchemaCount.textContent = `${attachments.length} ${attachments.length === 1 ? "row" : "rows"}`;
+    databaseElements.chunksSchemaCount.textContent = `${chunks.length} ${chunks.length === 1 ? "row" : "rows"}`;
+    databaseElements.attachmentsTabCount.textContent = attachments.length.toLocaleString();
+    databaseElements.chunksTabCount.textContent = chunks.length.toLocaleString();
+    renderDatabaseTable();
+  } catch (error) {
+    databaseElements.status.textContent = "Could not read IndexedDB";
+    databaseElements.empty.hidden = false;
+    databaseElements.empty.querySelector("strong").textContent = "Database unavailable";
+    databaseElements.empty.querySelector("span").textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    databaseElements.refresh.disabled = false;
+  }
+}
+
+databaseElements.tabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    activeDatabaseStore = tab.dataset.databaseStore;
+    databaseElements.search.value = "";
+    renderDatabaseTable();
+  });
+});
+databaseElements.search.addEventListener("input", renderDatabaseTable);
+databaseElements.refresh.addEventListener("click", () => loadDatabaseExplorer({ force: true }));
 
 function formatParameterType(property = {}) {
   if (Array.isArray(property.enum)) return property.enum.join(" · ");
