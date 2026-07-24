@@ -469,12 +469,22 @@ select {
 
 .message-row {
   display: flex;
+  width: 100%;
   margin: 0 auto 22px;
-  max-width: 720px;
 }
 
 .message-row.user {
-  justify-content: flex-end;
+  display: grid;
+}
+
+.message-row.user > * {
+  width: fit-content;
+  max-width: min(86%, 620px);
+  justify-self: end;
+}
+
+.message-row.user .message {
+  max-width: 100%;
 }
 
 .message {
@@ -1631,6 +1641,7 @@ select {
 
 .selectors {
   display: flex;
+  flex: 1;
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
@@ -1845,7 +1856,8 @@ select {
 }
 
 .model-chip {
-  flex: 1;
+  flex: 0 1 auto;
+  margin-left: auto;
 }
 
 .thinking-chip select {
