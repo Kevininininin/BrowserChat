@@ -742,6 +742,19 @@ h1 {
 }
 .files-search svg { width: 14px; fill: none; stroke: #888882; stroke-width: 1.7; }
 .files-search input { min-width: 0; width: 100%; padding: 0; font: 10px inherit; background: transparent; border: 0; outline: 0; }
+.files-filter-tabs { display: flex; padding: 0 14px 14px; gap: 5px; border-bottom: 1px solid var(--border); }
+.files-filter-tab {
+  padding: 5px 8px;
+  color: #73736e;
+  font-size: 8px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.files-filter-tab:hover { color: #3d3d39; background: #f0f0ed; }
+.files-filter-tab.active { color: #286c40; background: #eaf6ee; border-color: #d3ead9; }
 .files-list-heading {
   display: flex;
   align-items: center;

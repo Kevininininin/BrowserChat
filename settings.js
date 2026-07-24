@@ -73,6 +73,7 @@ const databaseElements = {
 const fileElements = {
   refresh: document.querySelector("#refreshFilesButton"),
   search: document.querySelector("#filesSearchInput"),
+  filters: [...document.querySelectorAll("[data-files-filter]")],
   count: document.querySelector("#filesSourceCount"),
   list: document.querySelector("#filesSourceList"),
   empty: document.querySelector("#filesEmptyState"),
@@ -96,6 +97,7 @@ let editingSkillId = null;
 let databaseSnapshot = null;
 let activeDatabaseStore = "attachments";
 let selectedFileId = null;
+let activeFilesFilter = "all";
 
 function activatePanel(panelId, { updateHash = false } = {}) {
   const tab = [...tabs].find((item) => item.dataset.panel === panelId);
@@ -494,9 +496,11 @@ function visibleWhitespace(text) {
     .replace(/\n/g, "↵\n");
 }
 
-function renderFilePreview() {
+function renderFilePreview(selectedAttachment = null) {
   const attachments = databaseSnapshot?.stores.attachments.records || [];
-  const attachment = attachments.find((item) => item.id === selectedFileId);
+  const attachment = selectedAttachment || attachments.find(
+    (item) => String(item.id) === String(selectedFileId)
+  );
   fileElements.preview.hidden = !attachment;
   fileElements.previewEmpty.hidden = Boolean(attachment);
   if (!attachment) return;
@@ -551,23 +555,40 @@ function renderFilesList() {
   const attachments = [...databaseSnapshot.stores.attachments.records]
     .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
   const query = fileElements.search.value.trim().toLocaleLowerCase();
-  const filtered = attachments.filter((attachment) =>
-    !query || [attachment.name, attachment.kind, attachment.mimeType, attachment.status]
-      .some((value) => String(value || "").toLocaleLowerCase().includes(query))
-  );
-  if (selectedFileId && !filtered.some((item) => item.id === selectedFileId)) {
+  const filtered = attachments.filter((attachment) => {
+    const chunks = getFileChunks(attachment.id);
+    const matchesSearch = !query || [attachment.name, attachment.kind, attachment.mimeType, attachment.status]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query));
+    const matchesFilter = activeFilesFilter === "all"
+      || (activeFilesFilter === "indexed" && chunks.length > 0)
+      || (activeFilesFilter === "no-chunks" && chunks.length === 0);
+    return matchesSearch && matchesFilter;
+  });
+  if (selectedFileId && !filtered.some((item) => String(item.id) === String(selectedFileId))) {
     selectedFileId = null;
   }
   if (!selectedFileId && filtered.length) selectedFileId = filtered[0].id;
 
+  const selectedAttachment = filtered.find(
+    (item) => String(item.id) === String(selectedFileId)
+  ) || null;
+  // Render the selected record directly. This avoids depending on a DOM dataset
+  // round-trip for IndexedDB keys, which can be non-string values.
+  if (selectedAttachment) selectedFileId = selectedAttachment.id;
+
   fileElements.count.textContent =
     `${filtered.length}${query ? ` of ${attachments.length}` : ""} ${filtered.length === 1 ? "source" : "sources"}`;
+  fileElements.filters.forEach((tab) => {
+    const active = tab.dataset.filesFilter === activeFilesFilter;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
   fileElements.list.innerHTML = filtered.map((attachment) => {
     const chunks = getFileChunks(attachment.id);
-    const active = attachment.id === selectedFileId;
+    const active = String(attachment.id) === String(selectedFileId);
     return `
       <button class="files-source-item${active ? " active" : ""}" type="button" role="option"
-        aria-selected="${active}" data-file-id="${escapeHtml(attachment.id)}">
+        aria-selected="${active}" data-file-id="${escapeHtml(encodeURIComponent(String(attachment.id)))}">
         <span class="files-source-icon">${escapeHtml((attachment.kind || "file").slice(0, 3).toUpperCase())}</span>
         <span class="files-source-copy">
           <strong title="${escapeHtml(attachment.name || "Untitled source")}">${escapeHtml(attachment.name || "Untitled source")}</strong>
@@ -578,7 +599,7 @@ function renderFilesList() {
   }).join("");
   fileElements.empty.hidden = filtered.length > 0;
   fileElements.list.hidden = filtered.length === 0;
-  renderFilePreview();
+  renderFilePreview(selectedAttachment);
 }
 
 async function loadFilesExplorer({ force = false } = {}) {
@@ -604,10 +625,16 @@ async function loadFilesExplorer({ force = false } = {}) {
 fileElements.list.addEventListener("click", (event) => {
   const item = event.target.closest("[data-file-id]");
   if (!item) return;
-  selectedFileId = item.dataset.fileId;
+  selectedFileId = decodeURIComponent(item.dataset.fileId);
   renderFilesList();
 });
 fileElements.search.addEventListener("input", renderFilesList);
+fileElements.filters.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    activeFilesFilter = tab.dataset.filesFilter;
+    renderFilesList();
+  });
+});
 fileElements.whitespace.addEventListener("change", renderFilePreview);
 fileElements.refresh.addEventListener("click", () => loadFilesExplorer({ force: true }));
 

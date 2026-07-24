@@ -2150,6 +2150,50 @@ select {
   backdrop-filter: blur(3px);
 }
 
+.image-preview-dialog {
+  display: grid;
+  width: min(94vw, 1100px);
+  max-width: 94vw;
+  max-height: 94vh;
+  padding: 16px;
+  place-items: center;
+  background: rgb(20 20 18 / 94%);
+  border: 1px solid #4c4c47;
+  border-radius: 16px;
+  box-shadow: 0 22px 70px rgb(0 0 0 / 35%);
+}
+
+.image-preview-dialog::backdrop {
+  background: rgb(0 0 0 / 62%);
+  backdrop-filter: blur(4px);
+}
+
+.image-preview-dialog > img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(94vh - 32px);
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  color: #f7f7f2;
+  background: rgb(0 0 0 / 38%);
+}
+
+.user-message-image {
+  cursor: zoom-in;
+}
+
+.user-message-image:focus-visible {
+  outline: 2px solid #7b68d5;
+  outline-offset: 2px;
+}
+
 .preview-header {
   grid-row: 1;
   display: flex;

@@ -119,6 +119,9 @@ const elements = {
   sourcePreviewContent: document.querySelector("#sourcePreviewContent"),
   closeSourcePreviewButton: document.querySelector("#closeSourcePreviewButton"),
   doneSourcePreviewButton: document.querySelector("#doneSourcePreviewButton"),
+  imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
+  imagePreview: document.querySelector("#imagePreview"),
+  closeImagePreviewButton: document.querySelector("#closeImagePreviewButton"),
   suggestions: document.querySelectorAll(".suggestion")
 };
 
@@ -1641,6 +1644,9 @@ function appendMessage(role, content = "", options = {}) {
         const image = document.createElement("img");
         image.className = "user-message-image";
         image.alt = attachment.name || "Attached image";
+        image.tabIndex = 0;
+        image.dataset.previewImage = "true";
+        image.dataset.previewName = attachment.name || "Attached image";
         if (attachment.previewUrl) {
           image.src = attachment.previewUrl;
         } else if (attachment.id) {
@@ -4091,6 +4097,28 @@ elements.sourcePreviewDialog.addEventListener("click", (event) => {
   if (event.target === elements.sourcePreviewDialog) {
     elements.sourcePreviewDialog.close();
   }
+});
+function openImagePreview(image) {
+  if (!image?.src) return;
+  elements.imagePreview.src = image.src;
+  elements.imagePreview.alt = image.dataset.previewName || "Expanded attachment preview";
+  elements.imagePreviewDialog.showModal();
+}
+elements.conversation.addEventListener("click", (event) => {
+  const image = event.target.closest("[data-preview-image]");
+  if (image) openImagePreview(image);
+});
+elements.conversation.addEventListener("keydown", (event) => {
+  if ((event.key === "Enter" || event.key === " ") && event.target.matches("[data-preview-image]")) {
+    event.preventDefault();
+    openImagePreview(event.target);
+  }
+});
+elements.closeImagePreviewButton.addEventListener("click", () => {
+  elements.imagePreviewDialog.close();
+});
+elements.imagePreviewDialog.addEventListener("click", (event) => {
+  if (event.target === elements.imagePreviewDialog) elements.imagePreviewDialog.close();
 });
 
 elements.newChatButton.addEventListener("click", () => void startNewChat());
