@@ -41,6 +41,12 @@
             </svg>
             <span>Skills</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="tools" data-panel="tools">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.5 6.5a4 4 0 0 0-5-5L12 4l-3 3-2.5-2.5a4 4 0 0 0 5 5L18 16l-2 2-6.5-6.5a4 4 0 0 0-5 5L7 14l3 3-2.5 2.5a4 4 0 0 0 5-5"/>
+            </svg>
+            <span>Tools</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="system-prompt" data-panel="system-prompt">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>
@@ -208,6 +214,34 @@ flowchart TD
           </div>
         </section>
 
+        <section id="tools" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Runtime capabilities</span>
+              <h1>Tools</h1>
+              <p>A read-only view of the functions BrowserChat can currently offer to Ollama. This list comes directly from the tool registry loaded by the extension.</p>
+            </div>
+            <div class="local-badge">
+              <span></span>
+              System managed
+            </div>
+          </header>
+
+          <section class="tools-summary-card" aria-labelledby="toolsSummaryTitle">
+            <div>
+              <span class="tool-count" id="toolCount">0</span>
+              <div>
+                <strong id="toolsSummaryTitle">Available tools</strong>
+                <p>Tools are defined by extension files and cannot be changed here.</p>
+              </div>
+            </div>
+            <code>tools/</code>
+          </section>
+
+          <div id="toolsList" class="tools-list" aria-live="polite"></div>
+          <p id="toolsEmptyState" class="tools-empty-state" hidden>No tool functions are currently registered.</p>
+        </section>
+
         <section id="system-prompt" class="settings-panel" role="tabpanel" hidden>
           <header class="panel-header">
             <div>
@@ -322,6 +356,9 @@ flowchart TD
     <script src="config/system-prompt.js"></script>
     <script src="skills/registry.js"></script>
     <script src="skills/defaults/mermaid.js"></script>
+    <script src="tools/registry.js"></script>
+    <script src="tools/calculator.js"></script>
+    <script src="tools/index.js"></script>
     <script src="assets/vendor/mermaid.min.js"></script>
     <script src="settings.js"></script>
   </body>

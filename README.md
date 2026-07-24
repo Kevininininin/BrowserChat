@@ -103,15 +103,16 @@ Tools are organized by responsibility:
 tools/
 ├── registry.js
 ├── calculator.js
-├── active-tab.js
-├── page-search.js
 └── index.js
 ```
 
 `registry.js` owns discovery and dispatch, each tool module defines its schemas
 and implementations, and `index.js` initializes all modules after they load.
 Add a tool with `BrowserChatTools.define((register) => register({ schema,
-execute }))`, then load its file before `tools/index.js` in `sidepanel.html`.
+execute }))`, then load its file before `tools/index.js` in both
+`sidepanel.html` and `settings.html`. The read-only **Settings → Tools** page
+renders those registered schemas so users can inspect the runtime's current
+capabilities without editing them.
 The chat loop automatically advertises every registered schema to Ollama and
 dispatches calls by function name, so the loop itself does not need to change.
 During a response, the activity panel uses a friendly progress label such as

@@ -27,6 +27,11 @@ const promptElements = {
   modeLabel: document.querySelector("#promptModeLabel"),
   advancedInputs: [...document.querySelectorAll("[data-prompt-key]")]
 };
+const toolElements = {
+  count: document.querySelector("#toolCount"),
+  list: document.querySelector("#toolsList"),
+  emptyState: document.querySelector("#toolsEmptyState")
+};
 let savedSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let savedPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
 let skillsEnabled = true;
@@ -187,6 +192,58 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+function formatParameterType(property = {}) {
+  if (Array.isArray(property.enum)) return property.enum.join(" · ");
+  if (property.type === "array") {
+    return `${property.items?.type || "value"}[]`;
+  }
+  return property.type || "value";
+}
+
+function renderTools() {
+  const schemas = BrowserChatTools.getSchemas();
+  toolElements.count.textContent = String(schemas.length);
+  toolElements.emptyState.hidden = schemas.length > 0;
+  toolElements.list.innerHTML = schemas.map((schema) => {
+    const definition = schema.function || {};
+    const parameters = definition.parameters?.properties || {};
+    const required = new Set(definition.parameters?.required || []);
+    const parameterRows = Object.entries(parameters).map(([name, property]) => `
+      <li>
+        <div>
+          <code>${escapeHtml(name)}</code>
+          <span class="tool-parameter-type">${escapeHtml(formatParameterType(property))}</span>
+          ${required.has(name) ? '<span class="tool-required-badge">Required</span>' : '<span class="tool-optional-badge">Optional</span>'}
+        </div>
+        ${property.description ? `<p>${escapeHtml(property.description)}</p>` : ""}
+      </li>
+    `).join("");
+
+    return `
+      <article class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h5"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg>
+          </div>
+          <div>
+            <div class="tool-name-row">
+              <code>${escapeHtml(definition.name || "Unnamed tool")}</code>
+              <span>Available</span>
+            </div>
+            <p>${escapeHtml(definition.description || "No description provided.")}</p>
+          </div>
+        </div>
+        <div class="tool-parameters">
+          <strong>Inputs</strong>
+          ${parameterRows ? `<ul>${parameterRows}</ul>` : '<p class="tool-no-parameters">No inputs</p>'}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+renderTools();
 
 function renderSkills() {
   skillElements.enabledToggle.checked = skillsEnabled;
