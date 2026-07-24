@@ -93,6 +93,18 @@ const fileElements = {
   chunks: document.querySelector("#filesChunksList"),
   chunksEmpty: document.querySelector("#filesChunksEmpty")
 };
+const accessElements = {
+  allSitesToggle: document.querySelector("#allSitesAccessToggle"),
+  allSitesLabel: document.querySelector("#allSitesAccessLabel"),
+  refresh: document.querySelector("#refreshSiteAccessButton"),
+  list: document.querySelector("#approvedSitesList"),
+  empty: document.querySelector("#approvedSitesEmpty"),
+  status: document.querySelector("#siteAccessStatus")
+};
+const REQUIRED_HOST_ORIGINS = new Set([
+  "http://localhost:11434/*",
+  "http://127.0.0.1:11434/*"
+]);
 let savedSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let savedPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
 let skillsEnabled = true;
@@ -120,6 +132,7 @@ function activatePanel(panelId, { updateHash = false } = {}) {
   if (activePanel) void renderMermaidIn(activePanel);
   if (panelId === "database") void loadDatabaseExplorer();
   if (panelId === "indexed-files") void loadFilesExplorer();
+  if (panelId === "site-access") void loadSiteAccess();
 }
 
 for (const tab of tabs) {
@@ -178,6 +191,142 @@ async function renderMermaidIn(container) {
 const initialPanel = document.querySelector(".settings-panel:not([hidden])");
 if (initialPanel && initialPanel.id !== "runtime") void renderMermaidIn(initialPanel);
 if (location.hash) activatePanel(location.hash.slice(1));
+
+function describeOriginPattern(pattern) {
+  if (pattern === "<all_urls>") {
+    return { name: "All sites", detail: pattern };
+  }
+  try {
+    const normalized = pattern.replace("*://", "https://").replace(/\/\*$/, "/");
+    const url = new URL(normalized);
+    return {
+      name: url.hostname || pattern,
+      detail: pattern
+    };
+  } catch {
+    return { name: pattern, detail: pattern };
+  }
+}
+
+function renderApprovedSites(origins, allSitesEnabled) {
+  accessElements.list.replaceChildren();
+  const individualOrigins = origins
+    .filter((origin) => origin !== "<all_urls>" && !REQUIRED_HOST_ORIGINS.has(origin))
+    .sort((left, right) => left.localeCompare(right));
+
+  accessElements.empty.hidden = individualOrigins.length > 0;
+  for (const origin of individualOrigins) {
+    const details = describeOriginPattern(origin);
+    const row = document.createElement("article");
+    row.className = "access-site-row";
+
+    const icon = document.createElement("span");
+    icon.className = "access-site-icon";
+    icon.textContent = details.name.slice(0, 1).toUpperCase() || "•";
+    icon.setAttribute("aria-hidden", "true");
+
+    const copy = document.createElement("div");
+    copy.className = "access-site-copy";
+    const name = document.createElement("strong");
+    name.textContent = details.name;
+    const pattern = document.createElement("span");
+    pattern.textContent = details.detail;
+    copy.append(name, pattern);
+    if (allSitesEnabled) {
+      const inherited = document.createElement("small");
+      inherited.textContent = "Also covered by all-sites access";
+      copy.append(inherited);
+    }
+
+    const remove = document.createElement("button");
+    remove.className = "access-revoke-button";
+    remove.type = "button";
+    remove.dataset.origin = origin;
+    remove.textContent = "Revoke";
+    remove.setAttribute("aria-label", `Revoke access to ${details.name}`);
+
+    row.append(icon, copy, remove);
+    accessElements.list.append(row);
+  }
+}
+
+async function loadSiteAccess({ status = "" } = {}) {
+  if (!globalThis.chrome?.permissions) {
+    accessElements.status.textContent = "Chrome permission controls are unavailable.";
+    return;
+  }
+  accessElements.refresh.disabled = true;
+  try {
+    const [allPermissions, allSitesEnabled] = await Promise.all([
+      chrome.permissions.getAll(),
+      chrome.permissions.contains({ origins: ["<all_urls>"] })
+    ]);
+    accessElements.allSitesToggle.checked = allSitesEnabled;
+    accessElements.allSitesLabel.textContent = allSitesEnabled ? "On" : "Off";
+    renderApprovedSites(allPermissions.origins || [], allSitesEnabled);
+    accessElements.status.textContent = status;
+  } catch (error) {
+    accessElements.status.textContent =
+      error.message || "Could not load site permissions.";
+  } finally {
+    accessElements.refresh.disabled = false;
+    accessElements.allSitesToggle.disabled = false;
+  }
+}
+
+accessElements.allSitesToggle.addEventListener("change", async () => {
+  const enable = accessElements.allSitesToggle.checked;
+  accessElements.allSitesToggle.disabled = true;
+  accessElements.status.textContent = enable
+    ? "Waiting for Chrome approval…"
+    : "Removing all-sites access…";
+  try {
+    const changed = enable
+      ? await chrome.permissions.request({ origins: ["<all_urls>"] })
+      : await chrome.permissions.remove({ origins: ["<all_urls>"] });
+    await loadSiteAccess({
+      status: changed
+        ? (enable ? "All-sites access granted." : "All-sites access revoked.")
+        : (enable ? "All-sites access was not granted." : "All-sites access was already off.")
+    });
+  } catch (error) {
+    await loadSiteAccess({
+      status: error.message || "Could not change all-sites access."
+    });
+  }
+});
+
+accessElements.refresh.addEventListener("click", () => {
+  void loadSiteAccess({ status: "Permissions refreshed." });
+});
+
+accessElements.list.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-origin]");
+  if (!button) return;
+  const origin = button.dataset.origin;
+  const details = describeOriginPattern(origin);
+  button.disabled = true;
+  accessElements.status.textContent = `Revoking access to ${details.name}…`;
+  try {
+    const removed = await chrome.permissions.remove({ origins: [origin] });
+    await loadSiteAccess({
+      status: removed
+        ? `Access to ${details.name} was revoked.`
+        : `Access to ${details.name} was already removed.`
+    });
+  } catch (error) {
+    button.disabled = false;
+    accessElements.status.textContent =
+      error.message || `Could not revoke access to ${details.name}.`;
+  }
+});
+
+chrome.permissions?.onAdded?.addListener(() => {
+  if (!document.querySelector("#site-access").hidden) void loadSiteAccess();
+});
+chrome.permissions?.onRemoved?.addListener(() => {
+  if (!document.querySelector("#site-access").hidden) void loadSiteAccess();
+});
 
 const ARCHITECTURE_WITH_SKILLS = `
 flowchart TD

@@ -1085,6 +1085,133 @@ h1 {
   border-radius: 13px;
 }
 
+.access-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgb(32 32 24 / 5%);
+}
+
+.access-all-sites-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 21px 22px;
+  gap: 30px;
+}
+
+.access-card-copy strong,
+.access-list-heading strong {
+  font-size: 13px;
+}
+
+.access-card-copy p,
+.access-list-heading p {
+  max-width: 650px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.access-switch { flex: 0 0 auto; }
+.access-switch input:disabled + span { opacity: 0.55; }
+
+.access-sites-card {
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.access-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  gap: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.access-sites-list { display: grid; }
+
+.access-site-row {
+  display: grid;
+  align-items: center;
+  padding: 14px 18px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  border-top: 1px solid #ecebe6;
+}
+
+.access-site-row:first-child { border-top: 0; }
+
+.access-site-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  color: #654e8e;
+  font-size: 12px;
+  font-weight: 750;
+  background: #f0ecf9;
+  border-radius: 9px;
+  place-items: center;
+}
+
+.access-site-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.access-site-copy strong { font-size: 11px; }
+.access-site-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.access-site-copy small { color: #8062c1; font-size: 9px; }
+
+.access-revoke-button {
+  padding: 7px 10px;
+  color: #a13d3d;
+  font-size: 10px;
+  font-weight: 680;
+  background: #fff;
+  border: 1px solid #e4cccc;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.access-revoke-button:hover:not(:disabled) { background: #fff6f6; }
+.access-revoke-button:disabled { opacity: 0.5; cursor: default; }
+
+.access-empty-state {
+  padding: 48px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.access-empty-state strong {
+  display: block;
+  color: #565650;
+  font-size: 12px;
+}
+
+.access-empty-state span {
+  display: block;
+  margin-top: 6px;
+  font-size: 9px;
+}
+
+.access-status {
+  min-height: 18px;
+  margin: 12px 3px 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .skill-editor-dialog {
   width: min(680px, calc(100vw - 40px));
   max-height: calc(100vh - 48px);

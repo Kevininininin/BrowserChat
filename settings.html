@@ -67,6 +67,13 @@
             </svg>
             <span>Tools</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="site-access" data-panel="site-access">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 5 6v5c0 4.6 2.8 8.4 7 10 4.2-1.6 7-5.4 7-10V6l-7-3Z"/>
+              <path d="M9 12.5 11 14l4-4"/>
+            </svg>
+            <span>Site Access</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="system-prompt" data-panel="system-prompt">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>
@@ -584,6 +591,49 @@ flowchart TD
             </div>
             <div id="contextToolsList" class="tools-list" aria-live="polite"></div>
           </section>
+        </section>
+
+        <section id="site-access" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Privacy &amp; permissions</span>
+              <h1>Site Access</h1>
+              <p>Control which pages BrowserChat can read or capture. Removing access takes effect immediately.</p>
+            </div>
+            <div class="local-badge">
+              <span></span>
+              Managed by Chrome
+            </div>
+          </header>
+
+          <section class="access-card access-all-sites-card" aria-labelledby="allSitesAccessTitle">
+            <div class="access-card-copy">
+              <strong id="allSitesAccessTitle">Allow access to all sites</strong>
+              <p>Required by Chrome for reliable browser screenshots. When off, BrowserChat can still read DOM content on sites you approve individually.</p>
+            </div>
+            <label class="switch-control access-switch">
+              <input id="allSitesAccessToggle" type="checkbox" />
+              <span aria-hidden="true"></span>
+              <b id="allSitesAccessLabel">Off</b>
+            </label>
+          </section>
+
+          <section class="access-card access-sites-card" aria-labelledby="approvedSitesTitle">
+            <div class="access-list-heading">
+              <div>
+                <strong id="approvedSitesTitle">Individually approved sites</strong>
+                <p>These sites may provide DOM context without the all-sites permission.</p>
+              </div>
+              <button id="refreshSiteAccessButton" class="settings-secondary-button" type="button">Refresh</button>
+            </div>
+            <div id="approvedSitesList" class="access-sites-list" aria-live="polite"></div>
+            <div id="approvedSitesEmpty" class="access-empty-state" hidden>
+              <strong>No individual sites approved</strong>
+              <span>Approve a site from the BrowserChat side panel and it will appear here.</span>
+            </div>
+          </section>
+
+          <p id="siteAccessStatus" class="access-status" role="status" aria-live="polite"></p>
         </section>
 
         <section id="system-prompt" class="settings-panel" role="tabpanel" hidden>

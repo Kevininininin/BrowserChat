@@ -207,7 +207,11 @@ Chrome blocks DOM access on internal pages such as `chrome://extensions`, so use
 
 - `tabs`: identify the active site's origin so BrowserChat can request access only to that site.
 - `scripting`: capture the DOM after the user has approved the active site.
-- Optional HTTP/HTTPS site access: Chrome remembers each origin the user approves.
+- Optional site access: DOM capture can be approved one origin at a time.
+- Optional all-sites access: requested only when the screenshot tool first needs
+  it, because Chrome's screenshot API does not accept a single-origin grant.
+- Settings → Site Access shows approved origins and lets you revoke individual
+  grants or turn the optional all-sites screenshot permission on and off.
 - `sidePanel`: host the chatbot beside the active page.
 - `storage`: remember chats, their last tabs, and the selected model.
 - `favicon`: display the remembered page icon for each chat.

@@ -641,6 +641,20 @@ function fileToBase64(file) {
   });
 }
 
+function base64DataUrlToBlob(dataUrl) {
+  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
+  if (!match) {
+    throw new Error("Chrome returned an invalid screenshot.");
+  }
+
+  const bytes = atob(match[2]);
+  const buffer = new Uint8Array(bytes.length);
+  for (let index = 0; index < bytes.length; index += 1) {
+    buffer[index] = bytes.charCodeAt(index);
+  }
+  return new Blob([buffer], { type: match[1] });
+}
+
 async function attachImage(file, chatId) {
   const attachment = {
     id: crypto.randomUUID(),
@@ -3941,17 +3955,52 @@ elements.screenshotButton.addEventListener("click", async () => {
   setError("");
   elements.screenshotButton.disabled = true;
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab(currentSite.windowId || undefined, {
+    // Resolve the tab at the moment of capture. The remembered chat site can be
+    // stale when the user switches tabs while the side panel remains open.
+    const [activeTab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true
+    });
+    const site = getSiteDetails(activeTab);
+    if (site.restricted) {
+      throw new Error(
+        "Chrome blocks screenshots of internal or protected pages. Open a regular website, then try again."
+      );
+    }
+
+    // captureVisibleTab is stricter than scripting.executeScript: a grant for
+    // only this origin is not sufficient. A side-panel click also does not
+    // renew activeTab after navigation, so request the optional all-sites
+    // capture permission from this explicit screenshot gesture.
+    const hasScreenshotAccess = await chrome.permissions.contains({
+      origins: ["<all_urls>"]
+    });
+    if (!hasScreenshotAccess) {
+      const granted = await chrome.permissions.request({
+        origins: ["<all_urls>"]
+      });
+      if (!granted) {
+        throw new Error(
+          "Allow access to all sites to use browser screenshots. DOM capture can still use site-only access."
+        );
+      }
+      await refreshSiteAccess(activeTab.id);
+    }
+
+    const dataUrl = await chrome.tabs.captureVisibleTab(activeTab.windowId, {
       format: "png"
     });
-    const blob = await (await fetch(dataUrl)).blob();
+    // Avoid fetch(dataUrl): the extension's connect-src intentionally permits
+    // only Ollama endpoints, and Chrome applies that policy to fetch().
+    const blob = base64DataUrlToBlob(dataUrl);
     const file = new File([blob], `browser-screenshot-${Date.now()}.png`, {
-      type: "image/png"
+      type: blob.type || "image/png"
     });
     await attachImage(file, activeChatId);
   } catch (error) {
+    const message = error.message || "Try reopening BrowserChat from the page you want to capture.";
     setError(
-      `Could not screenshot the active tab. ${error.message || "Try reopening BrowserChat from the page you want to capture."}`
+      `Could not screenshot the active tab. ${message}`
     );
   } finally {
     elements.screenshotButton.disabled = false;
