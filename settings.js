@@ -32,6 +32,23 @@ const toolElements = {
   list: document.querySelector("#toolsList"),
   emptyState: document.querySelector("#toolsEmptyState")
 };
+const ragElements = {
+  form: document.querySelector("#ragSettingsForm"),
+  enabled: document.querySelector("#ragEnabledInput"),
+  enabledLabel: document.querySelector("#ragEnabledLabel"),
+  model: document.querySelector("#ragEmbeddingModelInput"),
+  chunkSize: document.querySelector("#ragChunkSizeInput"),
+  overlap: document.querySelector("#ragChunkOverlapInput"),
+  minimumChunk: document.querySelector("#ragMinimumChunkInput"),
+  batchSize: document.querySelector("#ragBatchSizeInput"),
+  topK: document.querySelector("#ragTopKInput"),
+  finalChunks: document.querySelector("#ragFinalChunksInput"),
+  contextBudget: document.querySelector("#ragContextBudgetInput"),
+  neighbor: document.querySelector("#ragNeighborInput"),
+  similarity: document.querySelector("#ragSimilarityInput"),
+  reset: document.querySelector("#resetRagSettingsButton"),
+  status: document.querySelector("#ragSaveStatus")
+};
 let savedSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let savedPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
 let skillsEnabled = true;
@@ -113,7 +130,8 @@ if (location.hash) activatePanel(location.hash.slice(1));
 
 const ARCHITECTURE_WITH_SKILLS = `
 flowchart TD
-    A["User submits a prompt"] --> B["Build base conversation messages"]
+    A["User submits a prompt"] --> R["Retrieve chat-scoped file and DOM chunks"]
+    R --> B["Build base conversation messages"]
     B --> C["Create skill-selection context"]
     C --> D["Ollama selects relevant skills"]
     D --> E{"Were any skills selected?"}
@@ -138,7 +156,7 @@ flowchart TD
     classDef skill fill:#eaf1fb,stroke:#89a9cf,color:#315b87
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class A,B input
+    class A,B,R input
     class C,F,G skill
     class D,E,H,I,J,K,P model
     class M,N,O,Q tool
@@ -147,7 +165,8 @@ flowchart TD
 
 const ARCHITECTURE_WITHOUT_SKILLS = `
 flowchart TD
-    A["User submits a prompt"] --> B["Build conversation messages"]
+    A["User submits a prompt"] --> R["Retrieve chat-scoped file and DOM chunks"]
+    R --> B["Build conversation messages"]
     B --> C["Attach available tool schemas"]
     C --> D["Send messages and tools to Ollama"]
     D --> E{"Did Ollama request tools?"}
@@ -161,7 +180,7 @@ flowchart TD
     classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class A,B input
+    class A,B,R input
     class C,D,E model
     class G,H,I tool
     class F output
@@ -456,5 +475,88 @@ promptElements.resetButton.addEventListener("click", async () => {
   }
 });
 
+function populateRagSettings(value) {
+  const configuration = BrowserChatRagConfig.normalize(value);
+  ragElements.enabled.checked = configuration.enabled;
+  ragElements.enabledLabel.textContent = configuration.enabled ? "On" : "Off";
+  ragElements.model.value = configuration.embeddingModel;
+  ragElements.chunkSize.value = configuration.chunkSizeTokens;
+  ragElements.overlap.value = configuration.chunkOverlapTokens;
+  ragElements.minimumChunk.value = configuration.minimumChunkTokens;
+  ragElements.batchSize.value = configuration.embeddingBatchSize;
+  ragElements.topK.value = configuration.candidateTopK;
+  ragElements.finalChunks.value = configuration.finalChunkCount;
+  ragElements.contextBudget.value = configuration.maximumContextTokens;
+  ragElements.neighbor.value = configuration.neighborExpansion;
+  ragElements.similarity.value = configuration.minimumSimilarity;
+}
+
+function readRagSettings() {
+  return BrowserChatRagConfig.normalize({
+    enabled: ragElements.enabled.checked,
+    embeddingModel: ragElements.model.value,
+    chunkSizeTokens: ragElements.chunkSize.value,
+    chunkOverlapTokens: ragElements.overlap.value,
+    minimumChunkTokens: ragElements.minimumChunk.value,
+    embeddingBatchSize: ragElements.batchSize.value,
+    candidateTopK: ragElements.topK.value,
+    finalChunkCount: ragElements.finalChunks.value,
+    maximumContextTokens: ragElements.contextBudget.value,
+    neighborExpansion: ragElements.neighbor.value,
+    minimumSimilarity: ragElements.similarity.value
+  });
+}
+
+async function loadRagSettings() {
+  const storage = getPromptStorage();
+  const stored = storage
+    ? await storage.get(BrowserChatRagConfig.STORAGE_KEY)
+    : {};
+  populateRagSettings(stored[BrowserChatRagConfig.STORAGE_KEY]);
+  ragElements.status.textContent = "Loaded";
+}
+
+ragElements.enabled.addEventListener("change", () => {
+  ragElements.enabledLabel.textContent = ragElements.enabled.checked ? "On" : "Off";
+  ragElements.status.textContent = "Unsaved changes";
+});
+
+for (const input of ragElements.form.querySelectorAll("input")) {
+  if (input === ragElements.enabled) continue;
+  input.addEventListener("input", () => {
+    ragElements.status.textContent = "Unsaved changes";
+  });
+}
+
+ragElements.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const configuration = readRagSettings();
+  ragElements.status.textContent = "Saving…";
+  try {
+    const storage = getPromptStorage();
+    if (storage) {
+      await storage.set({
+        [BrowserChatRagConfig.STORAGE_KEY]: configuration
+      });
+    }
+    populateRagSettings(configuration);
+    ragElements.status.textContent = "Saved";
+  } catch {
+    ragElements.status.textContent = "Could not save settings";
+  }
+});
+
+ragElements.reset.addEventListener("click", async () => {
+  populateRagSettings(BrowserChatRagConfig.DEFAULTS);
+  const storage = getPromptStorage();
+  if (storage) {
+    await storage.set({
+      [BrowserChatRagConfig.STORAGE_KEY]: BrowserChatRagConfig.normalize()
+    });
+  }
+  ragElements.status.textContent = "Reset to defaults";
+});
+
 void loadPromptEditor();
 void loadSkillsSettings();
+void loadRagSettings();

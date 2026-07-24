@@ -1428,8 +1428,121 @@ select {
   box-shadow: 0 6px 22px rgb(0 0 0 / 8%), 0 0 0 2px rgb(0 0 0 / 2%);
 }
 
+.composer.file-drop-active {
+  border-color: #8e75ca;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 8%), 0 0 0 3px rgb(128 98 193 / 12%);
+}
+
 .composer-input {
   min-height: 29px;
+}
+
+.composer-file-chips {
+  display: flex;
+  align-items: center;
+  padding: 0 1px 7px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.composer-file-chips:empty {
+  display: none;
+}
+
+.file-chip,
+.source-chip {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 7px;
+  gap: 6px;
+  color: #4b4772;
+  font-size: 10px;
+  font-weight: 650;
+  background: #f1effb;
+  border: 1px solid #dcd5f2;
+  border-radius: 9px;
+}
+
+.file-chip[data-status="failed"] {
+  color: #9a3e39;
+  background: #fff1f0;
+  border-color: #f0d1ce;
+}
+
+.file-chip svg,
+.source-chip svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.file-chip-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-chip-name {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-status {
+  color: #77738e;
+  font-size: 8px;
+  font-weight: 550;
+}
+
+.file-chip-remove {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: currentColor;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0.7;
+  place-items: center;
+}
+
+.file-chip-remove:hover { background: rgb(0 0 0 / 6%); opacity: 1; }
+.file-chip-remove:disabled { cursor: default; opacity: 0.35; }
+
+.source-chip {
+  margin: 0 0 9px 4px;
+  cursor: context-menu;
+}
+
+.source-chip .chip-menu {
+  width: 176px;
+}
+
+.source-preview-content {
+  max-height: min(62vh, 680px);
+  margin: 14px 0;
+  padding: 15px;
+  overflow: auto;
+  color: #292927;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  background: #f7f7f4;
+  border: 1px solid var(--border);
+  border-radius: 11px;
 }
 
 #promptInput {

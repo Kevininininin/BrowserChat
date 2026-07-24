@@ -96,6 +96,7 @@
               aria-label="Message BrowserChat"
               data-placeholder="Ask anything"
             ></div>
+            <div id="fileChips" class="composer-file-chips" aria-live="polite"></div>
             <div id="contextChip" class="context-chip" contenteditable="false" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9"/>
@@ -116,6 +117,15 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
                 <div id="toolMenu" class="tool-menu" role="menu" hidden>
+                  <button id="addFileButton" class="tool-menu-item" type="button" role="menuitem">
+                    <span class="tool-menu-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 3h7l4 4v14H7z"/>
+                        <path d="M14 3v5h5M9.5 13h6M12.5 10v6"/>
+                      </svg>
+                    </span>
+                    <span><strong>Upload files</strong><small>Index text for this chat</small></span>
+                  </button>
                   <div class="tool-menu-row">
                     <button id="addDomButton" class="tool-menu-item" type="button" role="menuitem">
                       <span class="tool-menu-icon">
@@ -146,6 +156,7 @@
                   </div>
                 </div>
               </div>
+              <input id="fileInput" type="file" multiple hidden />
               <label class="select-chip model-chip" title="Ollama model">
                 <select id="modelSelect" aria-label="Select Ollama model">
                   <option value="">Loading models…</option>
@@ -240,6 +251,30 @@
       </div>
     </dialog>
 
+    <dialog id="sourcePreviewDialog" class="context-preview-dialog source-preview-dialog">
+      <div class="preview-header">
+        <div>
+          <span class="preview-eyebrow">Retrieved source</span>
+          <h2 id="sourcePreviewTitle">Source preview</h2>
+        </div>
+        <button id="closeSourcePreviewButton" class="icon-button" type="button" aria-label="Close preview">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="sourcePreviewMeta" class="preview-description"></p>
+      <pre id="sourcePreviewContent" class="source-preview-content"></pre>
+      <div class="preview-actions">
+        <button id="doneSourcePreviewButton" class="primary-button" type="button">Done</button>
+      </div>
+    </dialog>
+
+    <script src="rag/config.js"></script>
+    <script src="rag/database.js"></script>
+    <script src="assets/vendor/pdf.min.js"></script>
+    <script src="rag/extractors.js"></script>
+    <script src="rag/runtime.js"></script>
     <script src="config/system-prompt.js"></script>
     <script src="skills/registry.js"></script>
     <script src="skills/defaults/mermaid.js"></script>

@@ -68,6 +68,24 @@ active browser tab.
 After the first assistant response, BrowserChat asks the selected Ollama model once
 for a short title summarizing the user's first question, with thinking disabled.
 
+BrowserChat also supports chat-scoped local RAG for uploaded files and captured
+DOM context. Add files from the composer or drag them onto it. BrowserChat
+deterministically extracts PDF, text, Markdown, HTML, VTT, SRT, JSON, JSONL,
+CSV, TSV, and common source-code formats, splits the content into chunks, and
+generates embeddings through Ollama's `nomic-embed-text` model. Indexed content
+is stored in IndexedDB under the current chat and remains available to later
+questions in that chat.
+
+Install the default embedding model before indexing files:
+
+```sh
+ollama pull nomic-embed-text
+```
+
+Chunking and retrieval parameters are configurable in **Settings → Files &
+RAG**. Answers display chips for files and DOM captures actually used by
+retrieval; right-click a chip to preview its locally stored extracted source.
+
 ## How it works
 
 On each message, BrowserChat:
@@ -76,10 +94,22 @@ On each message, BrowserChat:
 2. Packages visible viewport text, other rendered page text, headings, and interactive elements such as links, buttons, inputs, dropdowns, labels, constraints, and available options.
 3. Excludes typed text-field and password values from control metadata.
 4. When skills are enabled, asks Ollama to select relevant skills from their names and descriptions. An explicitly selected slash-command skill skips this selection round.
-5. Adds only the selected skill instructions to the effective system prompt, then attaches the structured page context, recent conversation, user prompt, and registered tool schemas.
-6. Shows a separate, persisted skill-usage panel with each selected skill, whether it was selected automatically or explicitly, and the exact instructions injected into the prompt.
-7. Runs a multi-turn tool calling loop. A separate live activity panel shows when each tool starts, its exact requested name, inputs, completion state, and result. Requests for names outside the registered tool catalog are labeled as unsupported tool requests. Tool results are added to the conversation and sent back to Ollama until the model returns a final response.
-8. Streams Ollama's separate thinking and answer fields into the side panel.
+5. Retrieves the most relevant chunks from files and DOM captures indexed for
+   the current chat. DOM context uses this retrieval path instead of sending the
+   entire capture when RAG is enabled.
+6. Adds only the selected skill instructions to the effective system prompt,
+   then attaches retrieved context, recent conversation, the user prompt, and
+   registered tool schemas.
+7. Shows a separate, persisted skill-usage panel with each selected skill,
+   whether it was selected automatically or explicitly, and the exact
+   instructions injected into the prompt.
+8. Runs a multi-turn tool calling loop. A separate live activity panel shows
+   when each tool starts, its exact requested name, inputs, completion state,
+   and result. Requests for names outside the registered tool catalog are
+   labeled as unsupported tool requests. Tool results are added to the
+   conversation and sent back to Ollama until the model returns a final
+   response.
+9. Streams Ollama's separate thinking and answer fields into the side panel.
 
 ## Skills
 

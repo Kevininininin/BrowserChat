@@ -34,6 +34,13 @@
             </svg>
             <span>Response Formats</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="rag" data-panel="rag">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <ellipse cx="12" cy="5" rx="7" ry="3"/>
+              <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>
+            </svg>
+            <span>Files &amp; RAG</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="skills" data-panel="skills">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
@@ -96,6 +103,106 @@
             <article><strong>Tools stay local</strong><span>BrowserChat executes registered functions inside the extension.</span></article>
             <article><strong>Tools can repeat</strong><span>Ollama can request zero, one, or multiple tools in each round before answering.</span></article>
           </div>
+        </section>
+
+        <section id="rag" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Local retrieval</span>
+              <h1>Files &amp; RAG</h1>
+              <p>Control how BrowserChat extracts, chunks, embeds, and retrieves file and DOM context inside each chat.</p>
+            </div>
+            <div class="local-badge"><span></span>Stored locally</div>
+          </header>
+
+          <form id="ragSettingsForm" class="rag-settings-grid">
+            <section class="rag-settings-card">
+              <div class="rag-card-heading">
+                <div>
+                  <strong>Indexing</strong>
+                  <span>Embeddings are generated locally through Ollama.</span>
+                </div>
+                <label class="switch-control">
+                  <input id="ragEnabledInput" type="checkbox" />
+                  <span aria-hidden="true"></span>
+                  <b id="ragEnabledLabel">On</b>
+                </label>
+              </div>
+              <label class="rag-field wide">
+                <span>Embedding model</span>
+                <input id="ragEmbeddingModelInput" type="text" spellcheck="false" />
+                <small>Default: nomic-embed-text. Changing models does not re-index existing chat sources; upload them again after a change.</small>
+              </label>
+              <div class="rag-field-row">
+                <label class="rag-field">
+                  <span>Chunk size</span>
+                  <input id="ragChunkSizeInput" type="number" min="100" max="2000" step="25" />
+                  <small>Approximate tokens per chunk.</small>
+                </label>
+                <label class="rag-field">
+                  <span>Overlap</span>
+                  <input id="ragChunkOverlapInput" type="number" min="0" max="500" step="10" />
+                  <small>Approximate tokens repeated between chunks.</small>
+                </label>
+              </div>
+              <div class="rag-field-row">
+                <label class="rag-field">
+                  <span>Minimum chunk</span>
+                  <input id="ragMinimumChunkInput" type="number" min="0" max="500" step="10" />
+                  <small>Small final chunks merge into the previous one.</small>
+                </label>
+                <label class="rag-field">
+                  <span>Embedding batch size</span>
+                  <input id="ragBatchSizeInput" type="number" min="1" max="64" step="1" />
+                  <small>Chunks per Ollama embedding request.</small>
+                </label>
+              </div>
+            </section>
+
+            <section class="rag-settings-card">
+              <div class="rag-card-heading">
+                <div>
+                  <strong>Retrieval</strong>
+                  <span>Choose how much indexed context reaches the chat model.</span>
+                </div>
+              </div>
+              <div class="rag-field-row">
+                <label class="rag-field">
+                  <span>Top K candidates</span>
+                  <input id="ragTopKInput" type="number" min="1" max="50" step="1" />
+                  <small>Highest-scoring chunks considered.</small>
+                </label>
+                <label class="rag-field">
+                  <span>Final chunks</span>
+                  <input id="ragFinalChunksInput" type="number" min="1" max="30" step="1" />
+                  <small>Maximum chunks inserted into the prompt.</small>
+                </label>
+              </div>
+              <div class="rag-field-row">
+                <label class="rag-field">
+                  <span>Context budget</span>
+                  <input id="ragContextBudgetInput" type="number" min="250" max="20000" step="250" />
+                  <small>Approximate retrieved tokens per response.</small>
+                </label>
+                <label class="rag-field">
+                  <span>Neighbor expansion</span>
+                  <input id="ragNeighborInput" type="number" min="0" max="3" step="1" />
+                  <small>Adjacent chunks considered around a match.</small>
+                </label>
+              </div>
+              <label class="rag-field wide">
+                <span>Minimum similarity</span>
+                <input id="ragSimilarityInput" type="number" min="-1" max="1" step="0.01" />
+                <small>Use 0 to retain positive cosine matches. Raise only after evaluating real queries.</small>
+              </label>
+            </section>
+
+            <div class="rag-settings-actions">
+              <span id="ragSaveStatus" role="status" aria-live="polite">Loaded</span>
+              <button id="resetRagSettingsButton" class="settings-secondary-button" type="button">Reset defaults</button>
+              <button class="settings-primary-button" type="submit">Save changes</button>
+            </div>
+          </form>
         </section>
 
         <section id="skills" class="settings-panel" role="tabpanel" hidden>
@@ -353,6 +460,7 @@ flowchart TD
         </section>
       </main>
     </div>
+    <script src="rag/config.js"></script>
     <script src="config/system-prompt.js"></script>
     <script src="skills/registry.js"></script>
     <script src="skills/defaults/mermaid.js"></script>
