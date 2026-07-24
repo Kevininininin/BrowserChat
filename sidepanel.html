@@ -89,7 +89,7 @@
                 <circle cx="12" cy="12" r="9"/>
                 <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
               </svg>
-              <span>DOM</span>
+              <span id="contextChipLabel">DOM</span>
               <div class="chip-menu" role="menu" aria-label="DOM context options">
                 <button id="chipPreviewButton" type="button" role="menuitem">Preview</button>
                 <button id="chipConfigureButton" type="button" role="menuitem">Configure</button>
@@ -176,6 +176,35 @@
         This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.
       </p>
       <div id="previewStats" class="preview-stats"></div>
+      <section id="domModeControls" class="dom-mode-controls" hidden>
+        <div class="dom-mode-heading">
+          <strong>Capture mode</strong>
+          <span>Choose what this chat sends as page context.</span>
+        </div>
+        <div class="dom-mode-selector" role="radiogroup" aria-label="DOM capture mode">
+          <label>
+            <input id="fullPageModeInput" type="radio" name="domCaptureMode" value="fullPage" checked />
+            <span>
+              <strong>Full page</strong>
+              <small>Rendered text and controls across the page</small>
+            </span>
+          </label>
+          <label>
+            <input id="selectElementModeInput" type="radio" name="domCaptureMode" value="element" />
+            <span>
+              <strong>Select element</strong>
+              <small>Only one section you choose on the site</small>
+            </span>
+          </label>
+        </div>
+        <div id="selectedElementControls" class="selected-element-controls" hidden>
+          <div>
+            <strong id="selectedElementName">No element selected</strong>
+            <span id="selectedElementDescription">Hover over the site and click the section to include.</span>
+          </div>
+          <button id="selectElementButton" class="secondary-button" type="button">Select on page</button>
+        </div>
+      </section>
       <section id="domLimitControls" class="dom-limit-controls" hidden>
         <div class="dom-limit-heading">
           <div>

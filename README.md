@@ -43,8 +43,10 @@ OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
 
 The model menu is populated from `http://localhost:11434/api/tags`.
 
-The header keeps separate local chats. Each chat remembers its most recent tab
-and favicon, and selecting a chat reactivates that tab when it is still open.
+The header keeps separate local chats. Each chat remembers the site and favicon
+where its most recent message was sent. Selecting a chat returns to that saved
+page, reopening it when needed, while the header favicon follows the currently
+active browser tab.
 After the first assistant response, Pagewise asks the selected Ollama model once
 for a short title summarizing the user's first question, with thinking disabled.
 
@@ -63,7 +65,12 @@ Use **Preview page context** below the composer to inspect the exact structured 
 The DOM context configuration reports the full rendered text available on the
 page and lets you cap how many text characters are packaged. Configure it from
 the plus menu to change the system default, or from the DOM chip to store an
-override for only the active chat.
+override for only the active chat. The DOM chip configuration also supports a
+per-chat **Select element** mode: choose it, click **Select on page**, hover to
+outline a section of the site, and click the highlighted element. Preview and
+future DOM attachments in that chat will then package only rendered text,
+headings, and controls inside the selected element. Press Escape while picking
+to cancel. **Full page** remains the default mode.
 
 Thinking is enabled by default. The composer selector can turn it off for supported models. When enabled, reasoning streams into an expanded panel, then automatically collapses when the final answer begins.
 
