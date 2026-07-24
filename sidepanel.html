@@ -92,6 +92,7 @@
               <span>DOM</span>
               <div class="chip-menu" role="menu" aria-label="DOM context options">
                 <button id="chipPreviewButton" type="button" role="menuitem">Preview</button>
+                <button id="chipConfigureButton" type="button" role="menuitem">Configure</button>
                 <button id="removeContextButton" class="chip-menu-destructive" type="button" role="menuitem">Remove</button>
               </div>
             </div>
@@ -103,28 +104,42 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
                 <div id="toolMenu" class="tool-menu" role="menu" hidden>
-                  <button id="addDomButton" class="tool-menu-item" type="button" role="menuitem">
-                    <span class="tool-menu-icon">
+                  <div class="tool-menu-row">
+                    <button id="addDomButton" class="tool-menu-item" type="button" role="menuitem">
+                      <span class="tool-menu-icon">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="9"/>
+                          <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+                        </svg>
+                      </span>
+                      <span><strong>DOM context</strong><small>Include this page’s content</small></span>
+                    </button>
+                    <button
+                      id="domToolMoreButton"
+                      class="dom-tool-more-button"
+                      type="button"
+                      aria-label="DOM context options"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                    >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="9"/>
-                        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+                        <circle cx="5" cy="12" r="1.35"/>
+                        <circle cx="12" cy="12" r="1.35"/>
+                        <circle cx="19" cy="12" r="1.35"/>
                       </svg>
-                    </span>
-                    <span><strong>DOM context</strong><small>Include this page’s content</small></span>
-                  </button>
+                    </button>
+                    <div id="domToolMoreMenu" class="dom-tool-more-menu" role="menu" hidden>
+                      <button id="globalDomConfigureButton" type="button" role="menuitem">Configure</button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <label class="select-chip model-chip" title="Ollama model">
-                <span class="ollama-mark" aria-hidden="true">●</span>
                 <select id="modelSelect" aria-label="Select Ollama model">
                   <option value="">Loading models…</option>
                 </select>
               </label>
               <label class="select-chip thinking-chip" title="Show or hide model thinking">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9.5 18h5M10 21h4"/>
-                  <path d="M8.2 15.3A7 7 0 1 1 15.8 15.3c-.8.6-1.3 1.4-1.3 2.2h-5c0-.8-.5-1.6-1.3-2.2Z"/>
-                </svg>
                 <select id="thinkingSelect" aria-label="Thinking mode">
                   <option value="on">Think on</option>
                   <option value="off">Think off</option>
@@ -149,7 +164,7 @@
       <div class="preview-header">
         <div>
           <span class="preview-eyebrow">DOM tool</span>
-          <h2>Page context preview</h2>
+          <h2 id="previewTitle">Page context preview</h2>
         </div>
         <button id="closePreviewButton" class="icon-button" type="button" aria-label="Close preview">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -161,9 +176,25 @@
         This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.
       </p>
       <div id="previewStats" class="preview-stats"></div>
+      <section id="domLimitControls" class="dom-limit-controls" hidden>
+        <div class="dom-limit-heading">
+          <div>
+            <strong>Maximum DOM text length</strong>
+            <span id="domLimitScope"></span>
+          </div>
+          <label class="dom-limit-input-wrap">
+            <input id="domLimitInput" type="number" min="100" max="500000" step="100" inputmode="numeric" />
+            <span>characters</span>
+          </label>
+        </div>
+        <p id="domLengthInfo">Capture the page to measure its available DOM text.</p>
+        <small>Viewport text is packaged first. Headings and control metadata remain included outside this text limit.</small>
+      </section>
       <pre id="contextPreviewContent" class="context-preview-content">Capture a page to preview its context.</pre>
       <div class="preview-actions">
+        <button id="resetDomLimitButton" class="secondary-button" type="button" hidden>Use system default</button>
         <button id="refreshPreviewButton" class="secondary-button" type="button">Refresh</button>
+        <button id="saveDomLimitButton" class="primary-button" type="button" hidden>Save limit</button>
         <button id="donePreviewButton" class="primary-button" type="button">Done</button>
       </div>
     </dialog>

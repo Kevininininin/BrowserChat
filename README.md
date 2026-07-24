@@ -60,6 +60,11 @@ On each message, Pagewise:
 
 Use **Preview page context** below the composer to inspect the exact structured page information that will be attached to the next prompt.
 
+The DOM context configuration reports the full rendered text available on the
+page and lets you cap how many text characters are packaged. Configure it from
+the plus menu to change the system default, or from the DOM chip to store an
+override for only the active chat.
+
 Thinking is enabled by default. The composer selector can turn it off for supported models. When enabled, reasoning streams into an expanded panel, then automatically collapses when the final answer begins.
 
 Chrome blocks DOM access on internal pages such as `chrome://extensions`, so use the extension on a regular `http` or `https` website.

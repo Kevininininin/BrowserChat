@@ -3,10 +3,12 @@ const MAX_HISTORY_MESSAGES = 12;
 const MAX_MEMORIZED_DOM_ATTACHMENTS = 3;
 const CHAT_STORAGE_KEY = "pagewiseChats";
 const ACTIVE_CHAT_STORAGE_KEY = "pagewiseActiveChatId";
+const DOM_TEXT_LIMIT_STORAGE_KEY = "pagewiseDomTextLimit";
 const DEFAULT_CHAT_TITLE = "New Chat";
+const DEFAULT_DOM_TEXT_LIMIT = 40_000;
+const MIN_DOM_TEXT_LIMIT = 100;
+const MAX_DOM_TEXT_LIMIT = 500_000;
 const CONTEXT_LIMITS = {
-  viewportTextCharacters: 12_000,
-  pageTextCharacters: 28_000,
   headings: 60,
   interactiveElements: 120,
   optionsPerControl: 30,
@@ -24,9 +26,13 @@ const elements = {
   toolMenuButton: document.querySelector("#toolMenuButton"),
   toolMenu: document.querySelector("#toolMenu"),
   addDomButton: document.querySelector("#addDomButton"),
+  domToolMoreButton: document.querySelector("#domToolMoreButton"),
+  domToolMoreMenu: document.querySelector("#domToolMoreMenu"),
+  globalDomConfigureButton: document.querySelector("#globalDomConfigureButton"),
   contextChip: document.querySelector("#contextChip"),
   contextChipMenu: document.querySelector("#contextChip .chip-menu"),
   chipPreviewButton: document.querySelector("#chipPreviewButton"),
+  chipConfigureButton: document.querySelector("#chipConfigureButton"),
   removeContextButton: document.querySelector("#removeContextButton"),
   errorBanner: document.querySelector("#errorBanner"),
   connectionDot: document.querySelector("#connectionDot"),
@@ -42,8 +48,15 @@ const elements = {
   allowSiteButton: document.querySelector("#allowSiteButton"),
   contextPreviewDialog: document.querySelector("#contextPreviewDialog"),
   contextPreviewContent: document.querySelector("#contextPreviewContent"),
+  previewTitle: document.querySelector("#previewTitle"),
   previewDescription: document.querySelector("#previewDescription"),
   previewStats: document.querySelector("#previewStats"),
+  domLimitControls: document.querySelector("#domLimitControls"),
+  domLimitScope: document.querySelector("#domLimitScope"),
+  domLimitInput: document.querySelector("#domLimitInput"),
+  domLengthInfo: document.querySelector("#domLengthInfo"),
+  resetDomLimitButton: document.querySelector("#resetDomLimitButton"),
+  saveDomLimitButton: document.querySelector("#saveDomLimitButton"),
   closePreviewButton: document.querySelector("#closePreviewButton"),
   donePreviewButton: document.querySelector("#donePreviewButton"),
   refreshPreviewButton: document.querySelector("#refreshPreviewButton"),
@@ -52,6 +65,7 @@ const elements = {
 
 let chats = [];
 let activeChatId = null;
+let globalDomTextLimit = DEFAULT_DOM_TEXT_LIMIT;
 let chatHistory = [];
 let memorizedDomAttachments = [];
 let activeRequest = null;
@@ -59,6 +73,10 @@ let conversationModel = null;
 let domContextEnabled = false;
 let lastCaretRange = null;
 let contextChipMenuCloseTimer = null;
+let previewMode = "preview";
+let domConfigurationScope = null;
+let domLimitRefreshTimer = null;
+let previewCaptureSequence = 0;
 let currentSite = {
   tabId: null,
   hostname: "",
@@ -79,6 +97,7 @@ function createChat() {
     faviconUrl: "",
     hostname: "",
     conversationModel: null,
+    domTextLimitOverride: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -86,6 +105,18 @@ function createChat() {
 
 function getActiveChat() {
   return chats.find((chat) => chat.id === activeChatId) || null;
+}
+
+function clampDomTextLimit(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_DOM_TEXT_LIMIT;
+  return Math.min(MAX_DOM_TEXT_LIMIT, Math.max(MIN_DOM_TEXT_LIMIT, Math.round(parsed)));
+}
+
+function getEffectiveDomTextLimit(chat = getActiveChat()) {
+  return Number.isFinite(chat?.domTextLimitOverride)
+    ? clampDomTextLimit(chat.domTextLimitOverride)
+    : globalDomTextLimit;
 }
 
 function normalizeStoredChat(chat) {
@@ -97,6 +128,9 @@ function normalizeStoredChat(chat) {
       ? chat.title.trim()
       : DEFAULT_CHAT_TITLE,
     titleGenerationAttempted: Boolean(chat?.titleGenerationAttempted),
+    domTextLimitOverride: Number.isFinite(chat?.domTextLimitOverride)
+      ? clampDomTextLimit(chat.domTextLimitOverride)
+      : null,
     messages: Array.isArray(chat?.messages)
       ? chat.messages.filter((message) =>
           ["user", "assistant"].includes(message?.role) &&
@@ -325,8 +359,12 @@ async function deleteChat(chatId) {
 async function initializeChats() {
   const stored = await chrome.storage.local.get([
     CHAT_STORAGE_KEY,
-    ACTIVE_CHAT_STORAGE_KEY
+    ACTIVE_CHAT_STORAGE_KEY,
+    DOM_TEXT_LIMIT_STORAGE_KEY
   ]);
+  globalDomTextLimit = Number.isFinite(stored[DOM_TEXT_LIMIT_STORAGE_KEY])
+    ? clampDomTextLimit(stored[DOM_TEXT_LIMIT_STORAGE_KEY])
+    : DEFAULT_DOM_TEXT_LIMIT;
   chats = Array.isArray(stored[CHAT_STORAGE_KEY])
     ? stored[CHAT_STORAGE_KEY].map(normalizeStoredChat)
     : [];
@@ -374,6 +412,12 @@ function updateSendButton() {
 function setToolMenu(open) {
   elements.toolMenu.hidden = !open;
   elements.toolMenuButton.setAttribute("aria-expanded", String(open));
+  if (!open) setDomToolMoreMenu(false);
+}
+
+function setDomToolMoreMenu(open) {
+  elements.domToolMoreMenu.hidden = !open;
+  elements.domToolMoreButton.setAttribute("aria-expanded", String(open));
 }
 
 function setDomContextEnabled(enabled) {
@@ -1116,7 +1160,7 @@ async function loadModels() {
   }
 }
 
-async function captureActivePageContext() {
+async function captureActivePageContext(maxTextCharacters = getEffectiveDomTextLimit()) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) {
     throw new Error("No active browser tab was found.");
@@ -1137,7 +1181,10 @@ async function captureActivePageContext() {
 
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    args: [CONTEXT_LIMITS],
+    args: [{
+      ...CONTEXT_LIMITS,
+      maxTextCharacters: clampDomTextLimit(maxTextCharacters)
+    }],
     func: (limits) => {
       const normalize = (value = "") =>
         String(value).replace(/\s+/g, " ").trim();
@@ -1211,14 +1258,10 @@ async function captureActivePageContext() {
       };
 
       const collectVisibleText = () => {
-        const viewportLines = [];
-        const elsewhereLines = [];
+        const viewportCandidates = [];
+        const elsewhereCandidates = [];
         const seenViewport = new Set();
         const seenElsewhere = new Set();
-        let viewportCharacters = 0;
-        let pageCharacters = 0;
-        let viewportTruncated = false;
-        let pageTruncated = false;
         const root = document.body || document.documentElement;
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
@@ -1252,33 +1295,52 @@ async function captureActivePageContext() {
           );
 
           if (inViewport) {
-            if (
-              !seenViewport.has(text) &&
-              viewportCharacters + text.length <= limits.viewportTextCharacters
-            ) {
-              viewportLines.push(text);
+            if (!seenViewport.has(text)) {
+              viewportCandidates.push(text);
               seenViewport.add(text);
-              viewportCharacters += text.length + 1;
-            } else if (!seenViewport.has(text)) {
-              viewportTruncated = true;
             }
-          } else if (
-            !seenElsewhere.has(text) &&
-            pageCharacters + text.length <= limits.pageTextCharacters
-          ) {
-            elsewhereLines.push(text);
-            seenElsewhere.add(text);
-            pageCharacters += text.length + 1;
           } else if (!seenElsewhere.has(text)) {
-            pageTruncated = true;
+            elsewhereCandidates.push(text);
+            seenElsewhere.add(text);
           }
         }
+
+        const characterLength = (lines) => lines.join("\n").length;
+        const takeWithinLimit = (lines, characterLimit) => {
+          const included = [];
+          let characters = 0;
+          for (const line of lines) {
+            const separatorLength = included.length ? 1 : 0;
+            const remaining = characterLimit - characters - separatorLength;
+            if (remaining <= 0) break;
+            if (line.length > remaining) {
+              included.push(remaining > 1 ? `${line.slice(0, remaining - 1)}…` : line.slice(0, remaining));
+              break;
+            }
+            included.push(line);
+            characters += separatorLength + line.length;
+          }
+          return included;
+        };
+
+        const maxTextCharacters = Math.max(0, limits.maxTextCharacters);
+        const viewportBudget = maxTextCharacters;
+        const viewportLines = takeWithinLimit(viewportCandidates, viewportBudget);
+        const viewportCharacters = characterLength(viewportLines);
+        const remainingBudget = Math.max(0, maxTextCharacters - viewportCharacters);
+        const pageBudget = remainingBudget;
+        const elsewhereLines = takeWithinLimit(elsewhereCandidates, pageBudget);
+        const pageCharacters = characterLength(elsewhereLines);
+        const totalViewportCharacters = characterLength(viewportCandidates);
+        const totalPageCharacters = characterLength(elsewhereCandidates);
 
         return {
           inViewport: viewportLines.join("\n"),
           elsewhereOnPage: elsewhereLines.join("\n"),
-          viewportTruncated,
-          pageTruncated
+          viewportTruncated: viewportCharacters < totalViewportCharacters,
+          pageTruncated: pageCharacters < totalPageCharacters,
+          totalViewportCharacters,
+          totalPageCharacters
         };
       };
 
@@ -1456,6 +1518,12 @@ async function captureActivePageContext() {
           interactiveElementCount: interactiveElements.length,
           viewportTextCharacters: visibleText.inViewport.length,
           otherVisibleTextCharacters: visibleText.elsewhereOnPage.length,
+          totalViewportTextCharacters: visibleText.totalViewportCharacters,
+          totalOtherVisibleTextCharacters: visibleText.totalPageCharacters,
+          packagedTextCharacters:
+            visibleText.inViewport.length + visibleText.elsewhereOnPage.length,
+          totalAvailableTextCharacters:
+            visibleText.totalViewportCharacters + visibleText.totalPageCharacters,
           limitsApplied: limits
         },
         privacy: {
@@ -1513,8 +1581,15 @@ function buildOllamaMessages(prompt, page = null) {
 }
 
 async function refreshContextPreview() {
-  elements.previewDescription.textContent =
-    "This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.";
+  const captureSequence = ++previewCaptureSequence;
+  const configuredLimit = previewMode === "configure"
+    ? clampDomTextLimit(elements.domLimitInput.value)
+    : getEffectiveDomTextLimit();
+  if (previewMode !== "stored") {
+    elements.previewDescription.textContent = previewMode === "configure"
+      ? "Preview how much rendered DOM text Pagewise will package locally with the selected limit."
+      : "This is the exact structured page information attached to your next prompt. Typed text-field values and passwords are excluded.";
+  }
   elements.refreshPreviewButton.hidden = false;
   elements.refreshPreviewButton.disabled = true;
   elements.refreshPreviewButton.textContent = "Capturing…";
@@ -1523,25 +1598,39 @@ async function refreshContextPreview() {
   elements.previewStats.textContent = "";
 
   try {
-    const context = await captureActivePageContext();
+    const context = await captureActivePageContext(configuredLimit);
+    if (captureSequence !== previewCaptureSequence) return;
     elements.contextPreviewContent.textContent = JSON.stringify(context, null, 2);
     elements.previewStats.textContent = [
-      `${context.stats.viewportTextCharacters.toLocaleString()} viewport text characters`,
-      `${context.stats.otherVisibleTextCharacters.toLocaleString()} other visible text characters`,
+      `${context.stats.packagedTextCharacters.toLocaleString()} packaged text characters`,
+      `${context.stats.totalAvailableTextCharacters.toLocaleString()} available`,
       `${context.stats.headingCount.toLocaleString()} headings`,
       `${context.stats.interactiveElementCount.toLocaleString()} interactive elements`
     ].join(" · ");
+    if (previewMode === "configure") {
+      const packaged = context.stats.packagedTextCharacters;
+      const available = context.stats.totalAvailableTextCharacters;
+      const omitted = Math.max(0, available - packaged);
+      elements.domLengthInfo.textContent = omitted
+        ? `${available.toLocaleString()} text characters are available in the full rendered DOM. This limit packages ${packaged.toLocaleString()} and omits approximately ${omitted.toLocaleString()}.`
+        : `${available.toLocaleString()} text characters are available in the full rendered DOM. The current limit packages all of them.`;
+    }
   } catch (error) {
+    if (captureSequence !== previewCaptureSequence) return;
     elements.contextPreviewContent.textContent =
       error.message || "Pagewise could not capture this page.";
     elements.previewStats.textContent = "Capture failed";
   } finally {
+    if (captureSequence !== previewCaptureSequence) return;
     elements.refreshPreviewButton.disabled = false;
     elements.refreshPreviewButton.textContent = "Refresh";
   }
 }
 
 function openStoredContextPreview(context) {
+  previewMode = "stored";
+  domConfigurationScope = null;
+  elements.previewTitle.textContent = "Page context preview";
   elements.previewDescription.textContent =
     "This is the exact structured page information that was sent with this reply.";
   elements.contextPreviewContent.textContent = JSON.stringify(context, null, 2);
@@ -1551,6 +1640,10 @@ function openStoredContextPreview(context) {
     `${context.stats.headingCount.toLocaleString()} headings`,
     `${context.stats.interactiveElementCount.toLocaleString()} interactive elements`
   ].join(" · ");
+  elements.domLimitControls.hidden = true;
+  elements.saveDomLimitButton.hidden = true;
+  elements.resetDomLimitButton.hidden = true;
+  elements.donePreviewButton.hidden = false;
   elements.refreshPreviewButton.hidden = true;
   if (!elements.contextPreviewDialog.open) {
     elements.contextPreviewDialog.showModal();
@@ -1563,10 +1656,85 @@ function openContextPreview() {
     return;
   }
 
+  previewMode = "preview";
+  domConfigurationScope = null;
+  elements.previewTitle.textContent = "Page context preview";
+  elements.domLimitControls.hidden = true;
+  elements.saveDomLimitButton.hidden = true;
+  elements.resetDomLimitButton.hidden = true;
+  elements.donePreviewButton.hidden = false;
   if (!elements.contextPreviewDialog.open) {
     elements.contextPreviewDialog.showModal();
   }
   refreshContextPreview();
+}
+
+function openDomConfiguration(scope) {
+  if (!currentSite.hasAccess) {
+    setError("Allow access to this site before configuring its DOM context.");
+    return;
+  }
+
+  const chat = getActiveChat();
+  previewMode = "configure";
+  domConfigurationScope = scope;
+  elements.previewTitle.textContent = "Configure DOM context";
+  const isChatScope = scope === "chat";
+  const configuredLimit = isChatScope
+    ? getEffectiveDomTextLimit(chat)
+    : globalDomTextLimit;
+
+  elements.domLimitInput.value = String(configuredLimit);
+  elements.domLimitScope.textContent = isChatScope
+    ? "Applies only to this chat."
+    : "System default for DOM context added in chats.";
+  elements.domLengthInfo.textContent =
+    "Capturing the page to measure its full rendered DOM text…";
+  elements.domLimitControls.hidden = false;
+  elements.saveDomLimitButton.hidden = false;
+  elements.resetDomLimitButton.hidden =
+    !isChatScope || !Number.isFinite(chat?.domTextLimitOverride);
+  elements.donePreviewButton.hidden = true;
+  elements.previewDescription.textContent =
+    "Preview how much rendered DOM text Pagewise will package locally with the selected limit.";
+  if (!elements.contextPreviewDialog.open) {
+    elements.contextPreviewDialog.showModal();
+  }
+  refreshContextPreview();
+}
+
+async function saveDomConfiguration() {
+  const limit = clampDomTextLimit(elements.domLimitInput.value);
+  elements.domLimitInput.value = String(limit);
+
+  if (domConfigurationScope === "global") {
+    globalDomTextLimit = limit;
+    await chrome.storage.local.set({ [DOM_TEXT_LIMIT_STORAGE_KEY]: limit });
+  } else if (domConfigurationScope === "chat") {
+    const chat = getActiveChat();
+    if (!chat) return;
+    chat.domTextLimitOverride = limit;
+    chat.updatedAt = Date.now();
+    await persistChats();
+    elements.resetDomLimitButton.hidden = false;
+  }
+
+  elements.saveDomLimitButton.textContent = "Saved";
+  setTimeout(() => {
+    elements.saveDomLimitButton.textContent = "Save limit";
+  }, 900);
+  await refreshContextPreview();
+}
+
+async function resetChatDomConfiguration() {
+  const chat = getActiveChat();
+  if (!chat || domConfigurationScope !== "chat") return;
+  chat.domTextLimitOverride = null;
+  chat.updatedAt = Date.now();
+  elements.domLimitInput.value = String(globalDomTextLimit);
+  elements.resetDomLimitButton.hidden = true;
+  await persistChats();
+  await refreshContextPreview();
 }
 
 async function streamChat(messages, signal, { onThinking, onContent }) {
@@ -1936,6 +2104,17 @@ elements.toolMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   setToolMenu(elements.toolMenu.hidden);
 });
+elements.domToolMoreButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setDomToolMoreMenu(elements.domToolMoreMenu.hidden);
+});
+elements.globalDomConfigureButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setToolMenu(false);
+  openDomConfiguration("global");
+});
 elements.addDomButton.addEventListener("click", () => {
   setDomContextEnabled(true);
   elements.input.focus();
@@ -1950,6 +2129,12 @@ elements.chipPreviewButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   openContextPreview();
+});
+elements.chipConfigureButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  closeContextChipMenu();
+  openDomConfiguration("chat");
 });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".tool-picker")) setToolMenu(false);
@@ -1967,6 +2152,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 elements.refreshPreviewButton.addEventListener("click", refreshContextPreview);
+elements.saveDomLimitButton.addEventListener("click", () => void saveDomConfiguration());
+elements.resetDomLimitButton.addEventListener("click", () => {
+  void resetChatDomConfiguration();
+});
+elements.domLimitInput.addEventListener("input", () => {
+  if (previewMode !== "configure") return;
+  clearTimeout(domLimitRefreshTimer);
+  domLimitRefreshTimer = setTimeout(refreshContextPreview, 350);
+});
 elements.closePreviewButton.addEventListener("click", () => {
   elements.contextPreviewDialog.close();
 });
