@@ -86,6 +86,9 @@ const fileElements = {
   chunkSummary: document.querySelector("#filesChunkSummary"),
   whitespace: document.querySelector("#filesWhitespaceToggle"),
   warnings: document.querySelector("#filesWarnings"),
+  imagePreview: document.querySelector("#filesImagePreview"),
+  imagePreviewImage: document.querySelector("#filesImagePreviewImage"),
+  imagePreviewMeta: document.querySelector("#filesImagePreviewMeta"),
   chunks: document.querySelector("#filesChunksList"),
   chunksEmpty: document.querySelector("#filesChunksEmpty")
 };
@@ -98,6 +101,7 @@ let databaseSnapshot = null;
 let activeDatabaseStore = "attachments";
 let selectedFileId = null;
 let activeFilesFilter = "all";
+let filesImagePreviewUrl = null;
 
 function activatePanel(panelId, { updateHash = false } = {}) {
   const tab = [...tabs].find((item) => item.dataset.panel === panelId);
@@ -496,6 +500,13 @@ function visibleWhitespace(text) {
     .replace(/\n/g, "↵\n");
 }
 
+function clearFilesImagePreview() {
+  if (filesImagePreviewUrl) URL.revokeObjectURL(filesImagePreviewUrl);
+  filesImagePreviewUrl = null;
+  fileElements.imagePreviewImage.removeAttribute("src");
+  fileElements.imagePreview.hidden = true;
+}
+
 function renderFilePreview(selectedAttachment = null) {
   const attachments = databaseSnapshot?.stores.attachments.records || [];
   const attachment = selectedAttachment || attachments.find(
@@ -503,6 +514,7 @@ function renderFilePreview(selectedAttachment = null) {
   );
   fileElements.preview.hidden = !attachment;
   fileElements.previewEmpty.hidden = Boolean(attachment);
+  clearFilesImagePreview();
   if (!attachment) return;
 
   const chunks = getFileChunks(attachment.id);
@@ -525,7 +537,7 @@ function renderFilePreview(selectedAttachment = null) {
   const warnings = [
     ...(Array.isArray(attachment.warnings) ? attachment.warnings : []),
     ...(attachment.error ? [attachment.error] : [])
-  ];
+  ].map((warning) => String(warning || "").trim()).filter(Boolean);
   fileElements.warnings.hidden = warnings.length === 0;
   fileElements.warnings.innerHTML = warnings.map((warning) =>
     `<span>${escapeHtml(warning)}</span>`
@@ -548,6 +560,23 @@ function renderFilePreview(selectedAttachment = null) {
     `;
   }).join("");
   fileElements.chunksEmpty.hidden = chunks.length > 0;
+  const chunksEmptyTitle = fileElements.chunksEmpty.querySelector("strong");
+  const chunksEmptyDescription = fileElements.chunksEmpty.querySelector("span");
+  if (attachment.kind === "image") {
+    chunksEmptyTitle.textContent = "Images are not text-chunked";
+    chunksEmptyDescription.textContent = "The original image is shown above; it is attached directly to the chat model.";
+  } else {
+    chunksEmptyTitle.textContent = "No chunks stored";
+    chunksEmptyDescription.textContent = "This source may still be indexing or extraction may have failed.";
+  }
+
+  if (attachment.kind === "image" && attachment.blob instanceof Blob) {
+    filesImagePreviewUrl = URL.createObjectURL(attachment.blob);
+    fileElements.imagePreviewImage.src = filesImagePreviewUrl;
+    fileElements.imagePreviewImage.alt = attachment.name || "Attached image";
+    fileElements.imagePreviewMeta.textContent = `${attachment.mimeType || "image"} · ${formatByteSize(attachment.blob.size)}`;
+    fileElements.imagePreview.hidden = false;
+  }
 }
 
 function renderFilesList() {

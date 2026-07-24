@@ -2151,7 +2151,6 @@ select {
 }
 
 .image-preview-dialog {
-  display: grid;
   position: relative;
   width: min(94vw, 1100px);
   max-width: 94vw;
@@ -2162,6 +2161,10 @@ select {
   border: 1px solid #4c4c47;
   border-radius: 16px;
   box-shadow: 0 22px 70px rgb(0 0 0 / 35%);
+}
+
+.image-preview-dialog[open] {
+  display: grid;
 }
 
 .image-preview-dialog::backdrop {
