@@ -212,6 +212,9 @@ Chrome blocks DOM access on internal pages such as `chrome://extensions`, so use
   it, because Chrome's screenshot API does not accept a single-origin grant.
 - Settings → Site Access shows approved origins and lets you revoke individual
   grants or turn the optional all-sites screenshot permission on and off.
+  Individual approvals and their favicons are retained separately when broad
+  access changes. Sending from a site while broad access is enabled remembers
+  that site as an individual approval.
 - `sidePanel`: host the chatbot beside the active page.
 - `storage`: remember chats, their last tabs, and the selected model.
 - `favicon`: display the remembered page icon for each chat.

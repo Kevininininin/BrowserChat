@@ -2101,6 +2101,23 @@ async function rememberSentSiteForChat(chatId) {
   if (!chat || !tab?.id) return;
 
   const details = getSiteDetails(tab);
+  if (!details.restricted && details.originPattern) {
+    const allSitesAccess = await chrome.permissions.contains({
+      origins: ["<all_urls>"]
+    });
+    if (allSitesAccess) {
+      try {
+        await BrowserChatSiteAccess.approve({
+          ...details,
+          faviconUrl: getFaviconUrl(tab),
+          approvedAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      } catch {
+        // Permission metadata should never prevent a message from being sent.
+      }
+    }
+  }
 
   chat.tabId = tab.id;
   chat.windowId = tab.windowId ?? chat.windowId;
@@ -2119,14 +2136,20 @@ async function refreshSiteAccess(preferredTabId = null) {
       : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
     const details = getSiteDetails(tab);
     let hasAccess = false;
+    let allSitesAccess = false;
 
     if (details.originPattern) {
-      hasAccess = await chrome.permissions.contains({
-        origins: [details.originPattern]
-      });
+      [allSitesAccess, hasAccess] = await Promise.all([
+        chrome.permissions.contains({ origins: ["<all_urls>"] }),
+        chrome.permissions.contains({ origins: [details.originPattern] })
+      ]);
     }
 
-    currentSite = { ...details, hasAccess };
+    currentSite = {
+      ...details,
+      hasAccess: allSitesAccess || hasAccess,
+      allSitesAccess
+    };
   } catch {
     currentSite = {
       tabId: null,
@@ -2158,6 +2181,24 @@ async function requestCurrentSiteAccess() {
       origins: [requestedPattern]
     });
 
+    if (granted) {
+      let tab;
+      try {
+        tab = await chrome.tabs.get(currentSite.tabId);
+      } catch {
+        tab = null;
+      }
+      try {
+        await BrowserChatSiteAccess.approve({
+          ...currentSite,
+          faviconUrl: tab ? getFaviconUrl(tab) : currentSite.faviconUrl,
+          approvedAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      } catch {
+        // The Chrome grant remains valid even if its display metadata cannot save.
+      }
+    }
     await refreshSiteAccess();
     if (!granted) {
       setError(`Page access was not approved for ${currentSite.hostname || "this site"}.`);

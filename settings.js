@@ -208,29 +208,42 @@ function describeOriginPattern(pattern) {
   }
 }
 
-function renderApprovedSites(origins, allSitesEnabled) {
-  accessElements.list.replaceChildren();
-  const individualOrigins = origins
-    .filter((origin) => origin !== "<all_urls>" && !REQUIRED_HOST_ORIGINS.has(origin))
-    .sort((left, right) => left.localeCompare(right));
+function getStoredSiteFavicon(site) {
+  if (site.faviconUrl) return site.faviconUrl;
+  const pageUrl = site.pageUrl || site.originPattern.replace(/\/\*$/, "/");
+  return chrome.runtime.getURL(
+    `/_favicon/?pageUrl=${encodeURIComponent(pageUrl)}&size=32`
+  );
+}
 
-  accessElements.empty.hidden = individualOrigins.length > 0;
-  for (const origin of individualOrigins) {
-    const details = describeOriginPattern(origin);
+function renderApprovedSites(sites, allSitesEnabled) {
+  accessElements.list.replaceChildren();
+  const approvedSites = [...sites].sort((left, right) =>
+    (left.hostname || left.originPattern).localeCompare(
+      right.hostname || right.originPattern
+    )
+  );
+
+  accessElements.empty.hidden = approvedSites.length > 0;
+  for (const site of approvedSites) {
+    const details = describeOriginPattern(site.originPattern);
     const row = document.createElement("article");
     row.className = "access-site-row";
 
-    const icon = document.createElement("span");
+    const icon = document.createElement("img");
     icon.className = "access-site-icon";
-    icon.textContent = details.name.slice(0, 1).toUpperCase() || "•";
-    icon.setAttribute("aria-hidden", "true");
+    icon.src = getStoredSiteFavicon(site);
+    icon.alt = "";
+    icon.addEventListener("error", () => {
+      icon.src = chrome.runtime.getURL("assets/icon-32.png");
+    }, { once: true });
 
     const copy = document.createElement("div");
     copy.className = "access-site-copy";
     const name = document.createElement("strong");
-    name.textContent = details.name;
+    name.textContent = site.hostname || details.name;
     const pattern = document.createElement("span");
-    pattern.textContent = details.detail;
+    pattern.textContent = site.originPattern;
     copy.append(name, pattern);
     if (allSitesEnabled) {
       const inherited = document.createElement("small");
@@ -241,13 +254,45 @@ function renderApprovedSites(origins, allSitesEnabled) {
     const remove = document.createElement("button");
     remove.className = "access-revoke-button";
     remove.type = "button";
-    remove.dataset.origin = origin;
+    remove.dataset.origin = site.originPattern;
     remove.textContent = "Revoke";
-    remove.setAttribute("aria-label", `Revoke access to ${details.name}`);
+    remove.setAttribute(
+      "aria-label",
+      `Revoke access to ${site.hostname || details.name}`
+    );
 
     row.append(icon, copy, remove);
     accessElements.list.append(row);
   }
+}
+
+async function mergeChromeSitesIntoRegistry(permissionOrigins, storedSites) {
+  const sitesByOrigin = new Map(
+    storedSites.map((site) => [site.originPattern, site])
+  );
+  let changed = false;
+  for (const originPattern of permissionOrigins) {
+    if (
+      originPattern === "<all_urls>" ||
+      REQUIRED_HOST_ORIGINS.has(originPattern) ||
+      sitesByOrigin.has(originPattern)
+    ) {
+      continue;
+    }
+    const details = describeOriginPattern(originPattern);
+    sitesByOrigin.set(originPattern, {
+      originPattern,
+      hostname: details.name,
+      pageUrl: originPattern.replace(/\/\*$/, "/"),
+      faviconUrl: "",
+      approvedAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    changed = true;
+  }
+  return changed
+    ? BrowserChatSiteAccess.save([...sitesByOrigin.values()])
+    : storedSites;
 }
 
 async function loadSiteAccess({ status = "" } = {}) {
@@ -257,13 +302,18 @@ async function loadSiteAccess({ status = "" } = {}) {
   }
   accessElements.refresh.disabled = true;
   try {
-    const [allPermissions, allSitesEnabled] = await Promise.all([
+    const [allPermissions, allSitesEnabled, storedSites] = await Promise.all([
       chrome.permissions.getAll(),
-      chrome.permissions.contains({ origins: ["<all_urls>"] })
+      chrome.permissions.contains({ origins: ["<all_urls>"] }),
+      BrowserChatSiteAccess.list()
     ]);
+    const approvedSites = await mergeChromeSitesIntoRegistry(
+      allPermissions.origins || [],
+      storedSites
+    );
     accessElements.allSitesToggle.checked = allSitesEnabled;
     accessElements.allSitesLabel.textContent = allSitesEnabled ? "On" : "Off";
-    renderApprovedSites(allPermissions.origins || [], allSitesEnabled);
+    renderApprovedSites(approvedSites, allSitesEnabled);
     accessElements.status.textContent = status;
   } catch (error) {
     accessElements.status.textContent =
@@ -281,11 +331,22 @@ accessElements.allSitesToggle.addEventListener("change", async () => {
     ? "Waiting for Chrome approval…"
     : "Removing all-sites access…";
   try {
-    const changed = enable
-      ? await chrome.permissions.request({ origins: ["<all_urls>"] })
-      : await chrome.permissions.remove({ origins: ["<all_urls>"] });
+    let changed;
+    let restored = true;
+    if (enable) {
+      changed = await chrome.permissions.request({ origins: ["<all_urls>"] });
+    } else {
+      const approvedSites = await BrowserChatSiteAccess.list();
+      changed = await chrome.permissions.remove({ origins: ["<all_urls>"] });
+      const origins = approvedSites.map((site) => site.originPattern);
+      if (origins.length) {
+        restored = await chrome.permissions.request({ origins });
+      }
+    }
     await loadSiteAccess({
-      status: changed
+      status: !restored
+        ? "All-sites access was removed, but Chrome did not restore every individual site grant."
+        : changed
         ? (enable ? "All-sites access granted." : "All-sites access revoked.")
         : (enable ? "All-sites access was not granted." : "All-sites access was already off.")
     });
@@ -308,10 +369,18 @@ accessElements.list.addEventListener("click", async (event) => {
   button.disabled = true;
   accessElements.status.textContent = `Revoking access to ${details.name}…`;
   try {
-    const removed = await chrome.permissions.remove({ origins: [origin] });
+    const allSitesEnabled = await chrome.permissions.contains({
+      origins: ["<all_urls>"]
+    });
+    const removed = allSitesEnabled
+      ? true
+      : await chrome.permissions.remove({ origins: [origin] });
+    await BrowserChatSiteAccess.revoke(origin);
     await loadSiteAccess({
       status: removed
-        ? `Access to ${details.name} was revoked.`
+        ? allSitesEnabled
+          ? `${details.name} was removed from individual approvals. All-sites access still covers it.`
+          : `Access to ${details.name} was revoked.`
         : `Access to ${details.name} was already removed.`
     });
   } catch (error) {
@@ -326,6 +395,15 @@ chrome.permissions?.onAdded?.addListener(() => {
 });
 chrome.permissions?.onRemoved?.addListener(() => {
   if (!document.querySelector("#site-access").hidden) void loadSiteAccess();
+});
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (
+    areaName === "local" &&
+    changes[BrowserChatSiteAccess.STORAGE_KEY] &&
+    !document.querySelector("#site-access").hidden
+  ) {
+    void loadSiteAccess();
+  }
 });
 
 const ARCHITECTURE_WITH_SKILLS = `
