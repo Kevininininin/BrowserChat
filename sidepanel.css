@@ -1484,6 +1484,14 @@ select {
   stroke-width: 1.6;
 }
 
+.file-chip-thumbnail {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
 .file-chip-copy {
   display: flex;
   min-width: 0;
@@ -1839,6 +1847,10 @@ select {
 }
 
 .tool-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.tool-menu-row .tool-menu-item:hover {
   background: transparent;
 }
 
@@ -1856,6 +1868,55 @@ select {
   color: #2f8a50;
   background: #edf6ef;
   border-radius: 8px;
+}
+
+.tool-menu-icon-file {
+  color: #356fbb;
+  background: #edf4fd;
+}
+
+.tool-menu-icon-screenshot {
+  color: #8a55b5;
+  background: #f5effa;
+}
+
+.tool-menu-icon-dom {
+  color: #2f8a50;
+  background: #edf6ef;
+}
+
+.user-message-attachments {
+  display: flex;
+  max-width: min(420px, 70vw);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-message-image {
+  display: block;
+  width: min(220px, 58vw);
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+.user-file-chip {
+  max-width: 240px;
+  padding: 5px 8px;
+  overflow: hidden;
+  color: #4b4772;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #f1effb;
+  border: 1px solid #dcd5f2;
+  border-radius: 8px;
+}
+
+.user-message-text {
+  white-space: pre-wrap;
 }
 
 .tool-menu-item strong,

@@ -66,6 +66,7 @@ const elements = {
   toolMenuButton: document.querySelector("#toolMenuButton"),
   toolMenu: document.querySelector("#toolMenu"),
   addFileButton: document.querySelector("#addFileButton"),
+  screenshotButton: document.querySelector("#screenshotButton"),
   fileInput: document.querySelector("#fileInput"),
   fileChips: document.querySelector("#fileChips"),
   addDomButton: document.querySelector("#addDomButton"),
@@ -409,7 +410,8 @@ function renderCurrentConversation() {
     appendMessage(message.role, message.content, {
       toolActivities: message.toolActivities,
       skillActivities: message.skillActivities,
-      sourceReferences: message.sourceReferences
+      sourceReferences: message.sourceReferences,
+      attachments: message.attachments
     });
   }
 }
@@ -568,6 +570,7 @@ function setError(message = "") {
 }
 
 function getFileAttachmentStatus(attachment) {
+  if (attachment.kind === "image") return "Image attached";
   if (attachment.status === "indexed") {
     return `Indexed · ${attachment.chunkCount} ${
       attachment.chunkCount === 1 ? "chunk" : "chunks"
@@ -587,7 +590,13 @@ function renderPendingFileChips() {
     chip.className = "file-chip";
     chip.dataset.status = attachment.status;
     chip.title = attachment.error || attachment.name;
-    chip.innerHTML = `
+    chip.innerHTML = attachment.kind === "image" ? `
+      <img class="file-chip-thumbnail" src="${attachment.previewUrl}" alt="" />
+      <span class="file-chip-copy">
+        <span class="file-chip-name">${escapeHtml(attachment.name)}</span>
+        <span class="file-chip-status">${escapeHtml(getFileAttachmentStatus(attachment))}</span>
+      </span>
+    ` : `
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M7 3h7l4 4v14H7z"></path>
         <path d="M14 3v5h5M9 12h6M9 16h6"></path>
@@ -604,6 +613,7 @@ function renderPendingFileChips() {
     removeButton.textContent = "×";
     removeButton.addEventListener("click", async () => {
       attachment.controller?.abort();
+      if (attachment.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(attachment.previewUrl);
       pendingFileAttachments = pendingFileAttachments.filter(
         (item) => item.id !== attachment.id
       );
@@ -616,6 +626,60 @@ function renderPendingFileChips() {
     });
     chip.append(removeButton);
     elements.fileChips.append(chip);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function attachImage(file, chatId) {
+  const attachment = {
+    id: crypto.randomUUID(),
+    chatId,
+    name: file.name || `image-${Date.now()}.png`,
+    mimeType: file.type || "image/png",
+    kind: "image",
+    status: "reading",
+    previewUrl: URL.createObjectURL(file),
+    blob: file
+  };
+  pendingFileAttachments.push(attachment);
+  renderPendingFileChips();
+  try {
+    attachment.promise = fileToBase64(file);
+    attachment.base64 = await attachment.promise;
+    attachment.status = "indexed";
+    await BrowserChatRagDatabase.putAttachment({
+      id: attachment.id,
+      chatId,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      kind: "image",
+      status: "stored",
+      blob: file,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  } catch (error) {
+    attachment.status = "failed";
+    attachment.error = error.message || "Could not attach image.";
+    setError(attachment.error);
+  }
+  renderPendingFileChips();
+  updateSendButton();
+}
+
+function addSelectedFile(file, chatId = activeChatId) {
+  if (String(file.type || "").startsWith("image/")) {
+    void attachImage(file, chatId);
+  } else {
+    void indexSelectedFile(file, chatId);
   }
 }
 
@@ -1569,10 +1633,38 @@ function appendMessage(role, content = "", options = {}) {
 
   const message = document.createElement("div");
   message.className = `message${options.pending ? " pending" : ""}`;
+  if (role === "user" && options.attachments?.length) {
+    const attachmentArea = document.createElement("div");
+    attachmentArea.className = "user-message-attachments";
+    for (const attachment of options.attachments) {
+      if (attachment.kind === "image") {
+        const image = document.createElement("img");
+        image.className = "user-message-image";
+        image.alt = attachment.name || "Attached image";
+        if (attachment.previewUrl) {
+          image.src = attachment.previewUrl;
+        } else if (attachment.id) {
+          void BrowserChatRagDatabase.getAttachment(attachment.id).then((stored) => {
+            if (stored?.blob) image.src = URL.createObjectURL(stored.blob);
+          });
+        }
+        attachmentArea.append(image);
+      } else {
+        const chip = document.createElement("span");
+        chip.className = "user-file-chip";
+        chip.textContent = attachment.name;
+        attachmentArea.append(chip);
+      }
+    }
+    message.append(attachmentArea);
+  }
   if (role === "assistant") {
     renderMarkdown(message, content);
   } else {
-    message.textContent = content;
+    const text = document.createElement("div");
+    text.className = "user-message-text";
+    text.textContent = content;
+    message.append(text);
   }
   contentWrap.append(message);
   row.append(contentWrap);
@@ -2752,7 +2844,8 @@ function buildOllamaMessages(
   prompt,
   retrieval = null,
   selectedSkills = [],
-  legacyPage = null
+  legacyPage = null,
+  images = []
 ) {
   const baseSystemPrompt = BrowserChatPromptConfig.buildSystemPrompt({
     corePrompt: userSystemPrompt,
@@ -2793,7 +2886,7 @@ function buildOllamaMessages(
       role,
       content
     })),
-    { role: "user", content: userContent }
+    { role: "user", content: userContent, ...(images.length ? { images } : {}) }
   ];
 }
 
@@ -3434,6 +3527,12 @@ async function submitPrompt(prompt) {
   const requestedSkillIds = [...explicitSkillIds];
   const composerAttachmentOrder = getComposerAttachmentOrder();
   const submittedFileAttachments = [...pendingFileAttachments];
+  const submittedAttachmentRefs = submittedFileAttachments.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.name,
+    kind: attachment.kind === "image" ? "image" : "file",
+    ...(attachment.previewUrl ? { previewUrl: attachment.previewUrl } : {})
+  }));
   const contextAttachment = includeDomContext
     ? { context: null, memorized: true }
     : null;
@@ -3444,7 +3543,10 @@ async function submitPrompt(prompt) {
   clearExplicitSkills();
   setPromptText();
   resizeInput();
-  appendMessage("user", prompt, { forceScroll: true });
+  appendMessage("user", prompt, {
+    forceScroll: true,
+    attachments: submittedAttachmentRefs
+  });
   const assistantUI = appendAssistantMessage({
     thinkingEnabled,
     modelSwitching
@@ -3528,7 +3630,10 @@ async function submitPrompt(prompt) {
       prompt,
       retrieval,
       selectedSkills,
-      ragEnabled ? null : page
+      ragEnabled ? null : page,
+      submittedFileAttachments
+        .filter((attachment) => attachment.kind === "image" && attachment.base64)
+        .map((attachment) => attachment.base64)
     );
     const answer = await runToolCallingLoop(messages, controller.signal, {
       answerNowSignal: answerNowController.signal,
@@ -3598,7 +3703,17 @@ async function submitPrompt(prompt) {
 
     assistantUI.message.classList.remove("pending");
     chatHistory.push(
-      { role: "user", content: prompt },
+      {
+        role: "user",
+        content: prompt,
+        ...(submittedAttachmentRefs.length
+          ? {
+              attachments: submittedAttachmentRefs.map(({ previewUrl, ...attachment }) =>
+                attachment
+              )
+            }
+          : {})
+      },
       {
         role: "assistant",
         content: answer.content,
@@ -3815,29 +3930,51 @@ elements.addFileButton.addEventListener("click", () => {
   setToolMenu(false);
   elements.fileInput.click();
 });
+elements.screenshotButton.addEventListener("click", async () => {
+  setToolMenu(false);
+  setError("");
+  elements.screenshotButton.disabled = true;
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(currentSite.windowId || undefined, {
+      format: "png"
+    });
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], `browser-screenshot-${Date.now()}.png`, {
+      type: "image/png"
+    });
+    await attachImage(file, activeChatId);
+  } catch (error) {
+    setError(
+      `Could not screenshot the active tab. ${error.message || "Try reopening BrowserChat from the page you want to capture."}`
+    );
+  } finally {
+    elements.screenshotButton.disabled = false;
+  }
+});
 elements.fileInput.addEventListener("change", () => {
   const chatId = activeChatId;
   for (const file of elements.fileInput.files || []) {
-    void indexSelectedFile(file, chatId);
+    addSelectedFile(file, chatId);
   }
   elements.fileInput.value = "";
 });
-elements.form.addEventListener("dragover", (event) => {
+document.addEventListener("dragover", (event) => {
   if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
   event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   elements.form.classList.add("file-drop-active");
 });
-elements.form.addEventListener("dragleave", (event) => {
-  if (event.relatedTarget && elements.form.contains(event.relatedTarget)) return;
+document.addEventListener("dragleave", (event) => {
+  if (event.relatedTarget) return;
   elements.form.classList.remove("file-drop-active");
 });
-elements.form.addEventListener("drop", (event) => {
+document.addEventListener("drop", (event) => {
   if (!event.dataTransfer?.files?.length) return;
   event.preventDefault();
   elements.form.classList.remove("file-drop-active");
   const chatId = activeChatId;
   for (const file of event.dataTransfer.files) {
-    void indexSelectedFile(file, chatId);
+    addSelectedFile(file, chatId);
   }
 });
 elements.removeContextButton.addEventListener("click", (event) => {

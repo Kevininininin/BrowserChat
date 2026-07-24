@@ -86,6 +86,11 @@ Chunking and retrieval parameters are configurable in **Settings → Files &
 RAG**. Answers display chips for files and DOM captures actually used by
 retrieval; right-click a chip to preview its locally stored extracted source.
 
+Image files use Ollama's multimodal chat input instead of text indexing. Upload
+or drag images into the side panel, or choose **Screenshot browser** from the
+plus menu to capture the visible area of the current active tab. A vision-capable
+Ollama model is required to interpret attached images.
+
 ## How it works
 
 On each message, BrowserChat:

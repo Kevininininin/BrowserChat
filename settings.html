@@ -48,6 +48,12 @@
             </svg>
             <span>Local Database</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="indexed-files" data-panel="indexed-files">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6"/>
+            </svg>
+            <span>Indexed Files</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="skills" data-panel="skills">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
@@ -264,6 +270,73 @@ flowchart TD
               <button class="settings-primary-button" type="submit">Save changes</button>
             </div>
           </form>
+        </section>
+
+        <section id="indexed-files" class="settings-panel files-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Extraction transparency</span>
+              <h1>Indexed Files</h1>
+              <p>Preview the exact text chunks saved for each source. Whitespace and line breaks are preserved so extraction quality is easy to verify.</p>
+            </div>
+            <button id="refreshFilesButton" class="settings-secondary-button database-refresh-button" type="button">
+              Refresh files
+            </button>
+          </header>
+
+          <section class="files-browser-card">
+            <aside class="files-source-pane">
+              <label class="files-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                <input id="filesSearchInput" type="search" placeholder="Find a source…" />
+              </label>
+              <div class="files-list-heading">
+                <strong>Sources</strong>
+                <span id="filesSourceCount">0 files</span>
+              </div>
+              <div id="filesSourceList" class="files-source-list" role="listbox" aria-label="Indexed sources"></div>
+              <div id="filesEmptyState" class="files-pane-empty" hidden>
+                <strong>No indexed sources</strong>
+                <span>Upload a file or capture a page in a chat to inspect its chunks here.</span>
+              </div>
+            </aside>
+
+            <div class="files-preview-pane">
+              <div id="filesPreviewEmpty" class="files-preview-empty">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h4"/></svg>
+                <strong>Select a source</strong>
+                <span>Its indexed chunks will appear here exactly as they are stored.</span>
+              </div>
+              <div id="filesPreview" hidden>
+                <header class="files-preview-header">
+                  <div>
+                    <div class="files-preview-title-row">
+                      <h2 id="filesPreviewTitle"></h2>
+                      <span id="filesPreviewStatus" class="files-status-badge"></span>
+                    </div>
+                    <p id="filesPreviewMetadata"></p>
+                  </div>
+                  <span id="filesPreviewModel" class="files-model-badge"></span>
+                </header>
+                <div class="files-preview-toolbar">
+                  <div>
+                    <strong id="filesChunkHeading">Indexed chunks</strong>
+                    <span id="filesChunkSummary"></span>
+                  </div>
+                  <label class="files-whitespace-toggle">
+                    <input id="filesWhitespaceToggle" type="checkbox" />
+                    <span>Show whitespace marks</span>
+                  </label>
+                </div>
+                <div id="filesWarnings" class="files-warnings" hidden></div>
+                <div id="filesChunksList" class="files-chunks-list"></div>
+                <div id="filesChunksEmpty" class="files-chunks-empty" hidden>
+                  <strong>No chunks stored</strong>
+                  <span>This source may still be indexing or extraction may have failed.</span>
+                </div>
+              </div>
+            </div>
+          </section>
         </section>
 
         <section id="database" class="settings-panel database-panel" role="tabpanel" hidden>

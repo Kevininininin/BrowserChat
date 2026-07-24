@@ -8,6 +8,7 @@
     "sidePanel",
     "storage",
     "tabs",
+    "activeTab",
     "favicon"
   ],
   "host_permissions": [

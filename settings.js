@@ -70,6 +70,24 @@ const databaseElements = {
   empty: document.querySelector("#databaseEmptyState"),
   visibleRows: document.querySelector("#databaseVisibleRows")
 };
+const fileElements = {
+  refresh: document.querySelector("#refreshFilesButton"),
+  search: document.querySelector("#filesSearchInput"),
+  count: document.querySelector("#filesSourceCount"),
+  list: document.querySelector("#filesSourceList"),
+  empty: document.querySelector("#filesEmptyState"),
+  previewEmpty: document.querySelector("#filesPreviewEmpty"),
+  preview: document.querySelector("#filesPreview"),
+  title: document.querySelector("#filesPreviewTitle"),
+  status: document.querySelector("#filesPreviewStatus"),
+  metadata: document.querySelector("#filesPreviewMetadata"),
+  model: document.querySelector("#filesPreviewModel"),
+  chunkSummary: document.querySelector("#filesChunkSummary"),
+  whitespace: document.querySelector("#filesWhitespaceToggle"),
+  warnings: document.querySelector("#filesWarnings"),
+  chunks: document.querySelector("#filesChunksList"),
+  chunksEmpty: document.querySelector("#filesChunksEmpty")
+};
 let savedSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let savedPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
 let skillsEnabled = true;
@@ -77,6 +95,7 @@ let skills = [];
 let editingSkillId = null;
 let databaseSnapshot = null;
 let activeDatabaseStore = "attachments";
+let selectedFileId = null;
 
 function activatePanel(panelId, { updateHash = false } = {}) {
   const tab = [...tabs].find((item) => item.dataset.panel === panelId);
@@ -93,6 +112,7 @@ function activatePanel(panelId, { updateHash = false } = {}) {
   const activePanel = document.querySelector(`#${panelId}`);
   if (activePanel) void renderMermaidIn(activePanel);
   if (panelId === "database") void loadDatabaseExplorer();
+  if (panelId === "indexed-files") void loadFilesExplorer();
 }
 
 for (const tab of tabs) {
@@ -458,6 +478,138 @@ databaseElements.copyDbml.addEventListener("click", async () => {
 databaseElements.openDiagram.addEventListener("click", () => {
   window.open(getDbdiagramUrl(), "_blank", "noopener,noreferrer");
 });
+
+function getFileChunks(attachmentId) {
+  if (!databaseSnapshot) return [];
+  return databaseSnapshot.stores.chunks.records
+    .filter((chunk) => chunk.attachmentId === attachmentId)
+    .sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
+}
+
+function visibleWhitespace(text) {
+  return String(text)
+    .replace(/ /g, "·")
+    .replace(/\t/g, "→\t")
+    .replace(/\r/g, "␍")
+    .replace(/\n/g, "↵\n");
+}
+
+function renderFilePreview() {
+  const attachments = databaseSnapshot?.stores.attachments.records || [];
+  const attachment = attachments.find((item) => item.id === selectedFileId);
+  fileElements.preview.hidden = !attachment;
+  fileElements.previewEmpty.hidden = Boolean(attachment);
+  if (!attachment) return;
+
+  const chunks = getFileChunks(attachment.id);
+  const createdAt = Number.isFinite(Number(attachment.createdAt))
+    ? new Date(Number(attachment.createdAt)).toLocaleString()
+    : "Unknown date";
+  fileElements.title.textContent = attachment.name || "Untitled source";
+  fileElements.status.textContent = attachment.status || "unknown";
+  fileElements.status.dataset.status = attachment.status || "unknown";
+  fileElements.metadata.textContent = [
+    attachment.kind || "file",
+    attachment.mimeType || "unknown type",
+    createdAt
+  ].join(" · ");
+  fileElements.model.textContent = attachment.embeddingModel || "No embedding model";
+  const tokens = chunks.reduce((sum, chunk) => sum + (Number(chunk.tokenEstimate) || 0), 0);
+  fileElements.chunkSummary.textContent =
+    `${chunks.length} ${chunks.length === 1 ? "chunk" : "chunks"} · ~${tokens.toLocaleString()} tokens`;
+
+  const warnings = [
+    ...(Array.isArray(attachment.warnings) ? attachment.warnings : []),
+    ...(attachment.error ? [attachment.error] : [])
+  ];
+  fileElements.warnings.hidden = warnings.length === 0;
+  fileElements.warnings.innerHTML = warnings.map((warning) =>
+    `<span>${escapeHtml(warning)}</span>`
+  ).join("");
+
+  const showWhitespace = fileElements.whitespace.checked;
+  fileElements.chunks.innerHTML = chunks.map((chunk) => {
+    const text = showWhitespace ? visibleWhitespace(chunk.text) : String(chunk.text || "");
+    return `
+      <article class="file-chunk-card">
+        <header>
+          <div>
+            <strong>Chunk ${Number(chunk.chunkIndex) + 1}</strong>
+            <span>index ${escapeHtml(chunk.chunkIndex)} · ~${Number(chunk.tokenEstimate || 0).toLocaleString()} tokens · ${String(chunk.text || "").length.toLocaleString()} characters</span>
+          </div>
+          <code>${escapeHtml(chunk.id)}</code>
+        </header>
+        <pre${showWhitespace ? ' class="show-whitespace"' : ""}>${escapeHtml(text)}</pre>
+      </article>
+    `;
+  }).join("");
+  fileElements.chunksEmpty.hidden = chunks.length > 0;
+}
+
+function renderFilesList() {
+  if (!databaseSnapshot) return;
+  const attachments = [...databaseSnapshot.stores.attachments.records]
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+  const query = fileElements.search.value.trim().toLocaleLowerCase();
+  const filtered = attachments.filter((attachment) =>
+    !query || [attachment.name, attachment.kind, attachment.mimeType, attachment.status]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query))
+  );
+  if (selectedFileId && !filtered.some((item) => item.id === selectedFileId)) {
+    selectedFileId = null;
+  }
+  if (!selectedFileId && filtered.length) selectedFileId = filtered[0].id;
+
+  fileElements.count.textContent =
+    `${filtered.length}${query ? ` of ${attachments.length}` : ""} ${filtered.length === 1 ? "source" : "sources"}`;
+  fileElements.list.innerHTML = filtered.map((attachment) => {
+    const chunks = getFileChunks(attachment.id);
+    const active = attachment.id === selectedFileId;
+    return `
+      <button class="files-source-item${active ? " active" : ""}" type="button" role="option"
+        aria-selected="${active}" data-file-id="${escapeHtml(attachment.id)}">
+        <span class="files-source-icon">${escapeHtml((attachment.kind || "file").slice(0, 3).toUpperCase())}</span>
+        <span class="files-source-copy">
+          <strong title="${escapeHtml(attachment.name || "Untitled source")}">${escapeHtml(attachment.name || "Untitled source")}</strong>
+          <small>${chunks.length} ${chunks.length === 1 ? "chunk" : "chunks"} · ${escapeHtml(attachment.status || "unknown")}</small>
+        </span>
+      </button>
+    `;
+  }).join("");
+  fileElements.empty.hidden = filtered.length > 0;
+  fileElements.list.hidden = filtered.length === 0;
+  renderFilePreview();
+}
+
+async function loadFilesExplorer({ force = false } = {}) {
+  if (databaseSnapshot && !force) {
+    renderFilesList();
+    return;
+  }
+  fileElements.refresh.disabled = true;
+  try {
+    databaseSnapshot = await BrowserChatRagDatabase.inspect();
+    renderFilesList();
+  } catch (error) {
+    fileElements.list.hidden = true;
+    fileElements.empty.hidden = false;
+    fileElements.empty.querySelector("strong").textContent = "Files unavailable";
+    fileElements.empty.querySelector("span").textContent =
+      error instanceof Error ? error.message : String(error);
+  } finally {
+    fileElements.refresh.disabled = false;
+  }
+}
+
+fileElements.list.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-file-id]");
+  if (!item) return;
+  selectedFileId = item.dataset.fileId;
+  renderFilesList();
+});
+fileElements.search.addEventListener("input", renderFilesList);
+fileElements.whitespace.addEventListener("change", renderFilePreview);
+fileElements.refresh.addEventListener("click", () => loadFilesExplorer({ force: true }));
 
 function formatParameterType(property = {}) {
   if (Array.isArray(property.enum)) return property.enum.join(" · ");

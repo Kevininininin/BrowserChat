@@ -118,7 +118,7 @@
                 </button>
                 <div id="toolMenu" class="tool-menu" role="menu" hidden>
                   <button id="addFileButton" class="tool-menu-item" type="button" role="menuitem">
-                    <span class="tool-menu-icon">
+                    <span class="tool-menu-icon tool-menu-icon-file">
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M7 3h7l4 4v14H7z"/>
                         <path d="M14 3v5h5M9.5 13h6M12.5 10v6"/>
@@ -126,9 +126,18 @@
                     </span>
                     <span><strong>Upload files</strong><small>Index text for this chat</small></span>
                   </button>
+                  <button id="screenshotButton" class="tool-menu-item" type="button" role="menuitem">
+                    <span class="tool-menu-icon tool-menu-icon-screenshot">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z"/>
+                        <circle cx="12" cy="13" r="3.5"/>
+                      </svg>
+                    </span>
+                    <span><strong>Screenshot browser</strong><small>Attach the active tab</small></span>
+                  </button>
                   <div class="tool-menu-row">
                     <button id="addDomButton" class="tool-menu-item" type="button" role="menuitem">
-                      <span class="tool-menu-icon">
+                      <span class="tool-menu-icon tool-menu-icon-dom">
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <circle cx="12" cy="12" r="9"/>
                           <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
@@ -156,7 +165,7 @@
                   </div>
                 </div>
               </div>
-              <input id="fileInput" type="file" multiple hidden />
+              <input id="fileInput" type="file" accept="image/*,.pdf,.txt,.md,.markdown,.html,.htm,.vtt,.srt,.json,.jsonl,.ndjson,.csv,.tsv,.xml,.svg,.css,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.hpp,.go,.rs,.rb,.swift,.kt,.sql,.yaml,.yml,.toml" multiple hidden />
               <label class="select-chip model-chip" title="Ollama model">
                 <select id="modelSelect" aria-label="Select Ollama model">
                   <option value="">Loading models…</option>
