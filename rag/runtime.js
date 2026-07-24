@@ -252,7 +252,7 @@
     return score;
   }
 
-  async function retrieve(chatId, query, { signal } = {}) {
+  async function retrieve(chatId, query, { signal, selectedChunks = {} } = {}) {
     if (!settings.enabled || !chatId || !query.trim()) {
       return { chunks: [], sources: [], context: "" };
     }
@@ -265,23 +265,40 @@
         .filter((attachment) => attachment.chatId === chatId)
         .map((attachment) => attachment.id)
     );
-    const allChunks = chatChunks.filter(
+    const selectedAttachmentIds = new Set(Object.keys(selectedChunks));
+    const eligibleChunks = chatChunks.filter(
       (chunk) =>
         chunk.chatId === chatId &&
         chatAttachmentIds.has(chunk.attachmentId) &&
         chunk.embeddingModel === settings.embeddingModel
     );
-    if (!allChunks.length) return { chunks: [], sources: [], context: "" };
+    if (!eligibleChunks.length) return { chunks: [], sources: [], context: "" };
 
-    const [queryVector] = await requestEmbeddings([query], signal);
-    const candidates = allChunks
-      .map((chunk) => ({
-        ...chunk,
-        score: similarity(queryVector, chunk.embedding)
-      }))
-      .filter((chunk) => chunk.score > settings.minimumSimilarity)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, settings.candidateTopK);
+    const forcedChunks = eligibleChunks
+      .filter((chunk) => {
+        const indexes = selectedChunks[chunk.attachmentId];
+        return Array.isArray(indexes) && indexes.includes(chunk.chunkIndex);
+      })
+      .sort((a, b) =>
+        a.attachmentId.localeCompare(b.attachmentId) || a.chunkIndex - b.chunkIndex
+      )
+      .map((chunk) => ({ ...chunk, score: 1, manuallySelected: true }));
+    const allChunks = eligibleChunks.filter(
+      (chunk) => !selectedAttachmentIds.has(chunk.attachmentId)
+    );
+
+    let candidates = [];
+    if (allChunks.length) {
+      const [queryVector] = await requestEmbeddings([query], signal);
+      candidates = allChunks
+        .map((chunk) => ({
+          ...chunk,
+          score: similarity(queryVector, chunk.embedding)
+        }))
+        .filter((chunk) => chunk.score > settings.minimumSimilarity)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, settings.candidateTopK);
+    }
 
     const chunksByAttachment = new Map();
     for (const chunk of allChunks) {
@@ -317,7 +334,8 @@
       }
     }
 
-    const ordered = [...selected.values()].sort((a, b) => {
+    const ordered = [...forcedChunks, ...selected.values()].sort((a, b) => {
+      if (a.manuallySelected !== b.manuallySelected) return a.manuallySelected ? -1 : 1;
       if (a.score !== b.score) return b.score - a.score;
       if (a.attachmentId !== b.attachmentId) {
         return a.attachmentId.localeCompare(b.attachmentId);
@@ -328,8 +346,9 @@
     const finalChunks = [];
     let tokenCount = 0;
     for (const chunk of ordered) {
-      if (finalChunks.length >= settings.finalChunkCount) break;
+      if (!chunk.manuallySelected && finalChunks.length >= settings.finalChunkCount) break;
       if (
+        !chunk.manuallySelected &&
         finalChunks.length &&
         tokenCount + chunk.tokenEstimate > settings.maximumContextTokens
       ) continue;
@@ -358,7 +377,7 @@
       `[Retrieved source ${index + 1}]`,
       `File: ${chunk.attachmentName}`,
       `Chunk: ${chunk.chunkIndex + 1}`,
-      `Similarity: ${chunk.score.toFixed(4)}`,
+      chunk.manuallySelected ? "Selection: chosen for this message" : `Similarity: ${chunk.score.toFixed(4)}`,
       chunk.sourceMetadata?.url ? `URL: ${chunk.sourceMetadata.url}` : "",
       "Content:",
       chunk.text
@@ -391,6 +410,7 @@
     retrieve,
     getAttachment: BrowserChatRagDatabase.getAttachment,
     getAttachmentsByChat: BrowserChatRagDatabase.getAttachmentsByChat,
+    getChunksByAttachment: BrowserChatRagDatabase.getChunksByAttachment,
     deleteAttachment: BrowserChatRagDatabase.deleteAttachment,
     deleteChat: BrowserChatRagDatabase.deleteChat
   });

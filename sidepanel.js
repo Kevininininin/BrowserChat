@@ -122,6 +122,15 @@ const elements = {
   imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
   imagePreview: document.querySelector("#imagePreview"),
   closeImagePreviewButton: document.querySelector("#closeImagePreviewButton"),
+  fileChunkDialog: document.querySelector("#fileChunkDialog"),
+  fileChunkTitle: document.querySelector("#fileChunkTitle"),
+  fileChunkList: document.querySelector("#fileChunkList"),
+  automaticFileChunks: document.querySelector("#automaticFileChunks"),
+  allFileChunks: document.querySelector("#allFileChunks"),
+  fileChunkSelectionSummary: document.querySelector("#fileChunkSelectionSummary"),
+  closeFileChunkButton: document.querySelector("#closeFileChunkButton"),
+  cancelFileChunkButton: document.querySelector("#cancelFileChunkButton"),
+  saveFileChunkButton: document.querySelector("#saveFileChunkButton"),
   suggestions: document.querySelectorAll(".suggestion")
 };
 
@@ -135,6 +144,7 @@ let conversationModel = null;
 let domContextEnabled = false;
 let lastCaretRange = null;
 let contextChipMenuCloseTimer = null;
+let configuredFileAttachment = null;
 let previewMode = "preview";
 let domConfigurationScope = null;
 let domConfigurationDraft = null;
@@ -575,9 +585,12 @@ function setError(message = "") {
 function getFileAttachmentStatus(attachment) {
   if (attachment.kind === "image") return "Image attached";
   if (attachment.status === "indexed") {
+    const selection = attachment.includeAllChunks
+      ? " · Full document"
+      : "";
     return `Indexed · ${attachment.chunkCount} ${
       attachment.chunkCount === 1 ? "chunk" : "chunks"
-    }`;
+    }${selection}`;
   }
   if (attachment.status === "failed") return "Indexing failed";
   if (attachment.stage === "embedding" && attachment.total) {
@@ -609,6 +622,22 @@ function renderPendingFileChips() {
         <span class="file-chip-status">${escapeHtml(getFileAttachmentStatus(attachment))}</span>
       </span>
     `;
+    if (
+      attachment.kind !== "image" &&
+      attachment.status === "indexed" &&
+      attachment.chunkCount > 0
+    ) {
+      chip.tabIndex = 0;
+      const configureButton = document.createElement("button");
+      configureButton.type = "button";
+      configureButton.className = "file-chip-configure";
+      configureButton.textContent = "Configure";
+      configureButton.setAttribute("aria-label", `Configure chunks for ${attachment.name}`);
+      configureButton.addEventListener("click", () => {
+        void openFileChunkDialog(attachment);
+      });
+      chip.append(configureButton);
+    }
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "file-chip-remove";
@@ -630,6 +659,52 @@ function renderPendingFileChips() {
     chip.append(removeButton);
     elements.fileChips.append(chip);
   }
+}
+
+function updateFileChunkSelectionSummary() {
+  const count = Number(configuredFileAttachment?.chunkCount || 0);
+  elements.fileChunkSelectionSummary.textContent = elements.allFileChunks.checked
+    ? `All ${count} ${count === 1 ? "chunk" : "chunks"} will be included`
+    : `${count} ${count === 1 ? "chunk" : "chunks"} available for retrieval`;
+}
+
+async function openFileChunkDialog(attachment) {
+  if (attachment.status !== "indexed" || attachment.kind === "image") return;
+  const chunks = (await BrowserChatRag.getChunksByAttachment(attachment.id))
+    .sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
+  if (!chunks.length || !pendingFileAttachments.some((item) => item.id === attachment.id)) return;
+
+  configuredFileAttachment = attachment;
+  elements.automaticFileChunks.checked = !attachment.includeAllChunks;
+  elements.allFileChunks.checked = Boolean(attachment.includeAllChunks);
+  elements.fileChunkTitle.textContent = attachment.name;
+  elements.fileChunkList.replaceChildren();
+  for (const chunk of chunks) {
+    const section = document.createElement("section");
+    section.className = "file-document-chunk";
+    const boundary = document.createElement("div");
+    boundary.className = "file-document-chunk-boundary";
+    boundary.textContent =
+      `Chunk ${Number(chunk.chunkIndex) + 1} · ~${Number(chunk.tokenEstimate || 0).toLocaleString()} tokens`;
+    const content = document.createElement("pre");
+    content.textContent = String(chunk.text || "");
+    section.append(boundary, content);
+    elements.fileChunkList.append(section);
+  }
+  updateFileChunkSelectionSummary();
+  elements.fileChunkDialog.showModal();
+}
+
+function closeFileChunkDialog() {
+  configuredFileAttachment = null;
+  elements.fileChunkDialog.close();
+}
+
+function saveFileChunkSelection() {
+  if (!configuredFileAttachment) return;
+  configuredFileAttachment.includeAllChunks = elements.allFileChunks.checked;
+  closeFileChunkDialog();
+  renderPendingFileChips();
 }
 
 function fileToBase64(file) {
@@ -3659,9 +3734,18 @@ async function submitPrompt(prompt) {
       }
     }
     assistantUI.processingLabel.textContent = "Retrieving relevant context…";
+    const selectedChunks = Object.fromEntries(
+      submittedFileAttachments
+        .filter((attachment) => attachment.includeAllChunks)
+        .map((attachment) => [
+          attachment.id,
+          Array.from({ length: attachment.chunkCount }, (_, index) => index)
+        ])
+    );
     const retrieval = ragEnabled
       ? await BrowserChatRag.retrieve(chatId, prompt, {
-          signal: controller.signal
+          signal: controller.signal,
+          selectedChunks
         })
       : { chunks: [], sources: [], context: "" };
     const selectedSkills = await selectSkillsForPrompt(
@@ -4187,6 +4271,18 @@ elements.sourcePreviewDialog.addEventListener("click", (event) => {
   if (event.target === elements.sourcePreviewDialog) {
     elements.sourcePreviewDialog.close();
   }
+});
+
+elements.automaticFileChunks.addEventListener("change", updateFileChunkSelectionSummary);
+elements.allFileChunks.addEventListener("change", updateFileChunkSelectionSummary);
+elements.closeFileChunkButton.addEventListener("click", closeFileChunkDialog);
+elements.cancelFileChunkButton.addEventListener("click", closeFileChunkDialog);
+elements.saveFileChunkButton.addEventListener("click", saveFileChunkSelection);
+elements.fileChunkDialog.addEventListener("click", (event) => {
+  if (event.target === elements.fileChunkDialog) closeFileChunkDialog();
+});
+elements.fileChunkDialog.addEventListener("close", () => {
+  configuredFileAttachment = null;
 });
 function openImagePreview(image) {
   if (!image?.src) return;

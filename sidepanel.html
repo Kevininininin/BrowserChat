@@ -288,6 +288,46 @@
       <img id="imagePreview" alt="Expanded attachment preview" />
     </dialog>
 
+    <dialog id="fileChunkDialog" class="file-chunk-dialog">
+      <div class="preview-header">
+        <div>
+          <span class="preview-eyebrow">Attached file</span>
+          <h2 id="fileChunkTitle">Choose chunks</h2>
+        </div>
+        <button id="closeFileChunkButton" class="icon-button" type="button" aria-label="Close chunk selection">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p class="preview-description">Choose how this document should be added to the message you are composing. Later follow-ups always return to automatic retrieval.</p>
+      <div class="file-chunk-mode-selector" role="radiogroup" aria-label="Document context mode">
+        <label>
+          <input id="automaticFileChunks" type="radio" name="fileChunkMode" value="automatic" checked />
+          <span>
+            <strong>Automatic retrieval</strong>
+            <small>Recommended · BrowserChat chooses the chunks most relevant to your question.</small>
+          </span>
+        </label>
+        <label>
+          <input id="allFileChunks" type="radio" name="fileChunkMode" value="all" />
+          <span>
+            <strong>Include full document</strong>
+            <small>Force every extracted chunk into the context for this message.</small>
+          </span>
+        </label>
+      </div>
+      <div class="file-document-preview">
+        <div class="file-document-preview-heading">
+          <strong>Extracted text preview</strong>
+          <span id="fileChunkSelectionSummary"></span>
+        </div>
+        <div id="fileChunkList" class="file-chunk-selection-list"></div>
+      </div>
+      <div class="preview-actions">
+        <button id="cancelFileChunkButton" class="secondary-button" type="button">Cancel</button>
+        <button id="saveFileChunkButton" class="primary-button" type="button">Save</button>
+      </div>
+    </dialog>
+
     <script src="rag/config.js"></script>
     <script src="rag/database.js"></script>
     <script src="assets/vendor/pdf.min.js"></script>

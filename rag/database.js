@@ -92,6 +92,14 @@
     );
   }
 
+  async function getChunksByAttachment(attachmentId) {
+    const database = await open();
+    const transaction = database.transaction(CHUNKS, "readonly");
+    return requestAsPromise(
+      transaction.objectStore(CHUNKS).index("attachmentId").getAll(attachmentId)
+    );
+  }
+
   async function getAll(storeName) {
     if (![ATTACHMENTS, CHUNKS].includes(storeName)) {
       throw new Error(`Unknown BrowserChat RAG store: ${storeName}`);
@@ -164,6 +172,7 @@
     getAttachmentsByChat,
     replaceChunks,
     getChunksByChat,
+    getChunksByAttachment,
     getAll,
     inspect,
     deleteAttachment,
