@@ -602,6 +602,183 @@ select {
   white-space: pre-wrap;
 }
 
+.tool-activity-panel {
+  margin: 0 0 13px;
+  color: #60605c;
+  background: #f1f1ee;
+  border: 1px solid #e2e2dd;
+  border-radius: 12px;
+}
+
+.tool-activity-panel[hidden] {
+  display: none;
+}
+
+.tool-activity-panel > summary {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 11px;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 620;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-activity-panel > summary::-webkit-details-marker,
+.tool-activity-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-activity-panel > summary::before {
+  width: 7px;
+  height: 7px;
+  content: "";
+  background: #858580;
+  border-radius: 50%;
+}
+
+.tool-activity-panel.streaming > summary::before,
+.tool-activity-row[data-status="running"] .tool-activity-indicator {
+  background: #4c9a67;
+  box-shadow: 0 0 0 3px rgb(76 154 103 / 13%);
+  animation: thinkingPulse 1.15s ease-in-out infinite;
+}
+
+.tool-activity-panel > summary::after {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 140ms ease;
+}
+
+.tool-activity-panel[open] > summary::after {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.tool-activity-list {
+  display: grid;
+  padding: 0 11px 10px;
+  gap: 8px;
+}
+
+.tool-activity-actions {
+  padding: 0 11px 10px;
+}
+
+.tool-activity-actions[hidden] {
+  display: none;
+}
+
+.tool-answer-now-button {
+  padding: 6px 10px;
+  color: #4f4f4b;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  background: #fff;
+  border: 1px solid #d5d5cf;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tool-answer-now-button:hover:not(:disabled) {
+  color: #171716;
+  border-color: #aaa9a4;
+}
+
+.tool-answer-now-button:disabled {
+  color: #777773;
+  cursor: default;
+}
+
+.tool-answer-now-button:focus-visible {
+  outline: 2px solid #4c9a67;
+  outline-offset: 2px;
+}
+
+.tool-activity-row {
+  padding: 8px 9px;
+  background: rgb(255 255 255 / 62%);
+  border: 1px solid #e2e2dd;
+  border-radius: 9px;
+}
+
+.tool-activity-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.tool-activity-indicator {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  background: #858580;
+  border-radius: 50%;
+}
+
+.tool-activity-row[data-status="failed"] .tool-activity-indicator {
+  background: #b94a43;
+}
+
+.tool-activity-label {
+  min-width: 0;
+  color: #4f4f4b;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.tool-activity-name {
+  padding: 2px 5px;
+  overflow: hidden;
+  color: #62625d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #e7e7e2;
+  border-radius: 5px;
+}
+
+.tool-activity-details {
+  margin: 6px 0 0 14px;
+}
+
+.tool-activity-details > summary {
+  width: max-content;
+  color: #777773;
+  font-size: 10px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tool-activity-details > summary:hover {
+  color: #4f4f4b;
+}
+
+.tool-activity-body {
+  max-height: 180px;
+  margin-top: 6px;
+  padding: 7px 8px;
+  overflow: auto;
+  color: #70706b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  background: #f7f7f5;
+  border-radius: 7px;
+}
+
 .user .message {
   padding: 10px 14px;
   background: var(--assistant);

@@ -319,7 +319,9 @@ function renderCurrentConversation() {
   elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
   elements.emptyState.hidden = chatHistory.length > 0;
   for (const message of chatHistory) {
-    appendMessage(message.role, message.content);
+    appendMessage(message.role, message.content, {
+      toolActivities: message.toolActivities
+    });
   }
 }
 
@@ -898,6 +900,151 @@ function renderMarkdown(element, markdown) {
   element.innerHTML = markdownToHtml(markdown);
 }
 
+function getToolActivityCopy(toolName, status) {
+  const labels = {
+    calculate: {
+      running: "Calculating…",
+      completed: "Calculated",
+      failed: "Calculation failed"
+    }
+  };
+  const fallback = {
+    running: "Using tool…",
+    completed: "Used tool",
+    failed: "Tool failed"
+  };
+  return (labels[toolName] || fallback)[status] || fallback.running;
+}
+
+function formatToolActivityValue(value) {
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
+function createToolActivityPanel() {
+  const panel = document.createElement("details");
+  panel.className = "tool-activity-panel";
+  panel.hidden = true;
+  panel.setAttribute("aria-live", "polite");
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Using tools…";
+
+  const list = document.createElement("div");
+  list.className = "tool-activity-list";
+
+  const actions = document.createElement("div");
+  actions.className = "tool-activity-actions";
+  actions.hidden = true;
+
+  const answerNowButton = document.createElement("button");
+  answerNowButton.className = "tool-answer-now-button";
+  answerNowButton.type = "button";
+  answerNowButton.textContent = "Answer now";
+  actions.append(answerNowButton);
+
+  panel.append(summary, list, actions);
+
+  return {
+    panel,
+    summary,
+    list,
+    actions,
+    answerNowButton,
+    activities: new Map()
+  };
+}
+
+function updateToolActivitySummary(toolUI) {
+  const activities = [...toolUI.activities.values()];
+  const running = activities.filter((activity) => activity.status === "running");
+  if (running.length) {
+    toolUI.summary.textContent = running.length === 1
+      ? getToolActivityCopy(running[0].name, "running")
+      : `Using ${running.length} tools…`;
+    toolUI.panel.classList.add("streaming");
+    return;
+  }
+
+  toolUI.panel.classList.remove("streaming");
+  const failed = activities.filter((activity) => activity.status === "failed").length;
+  toolUI.summary.textContent = failed
+    ? `${failed} tool ${failed === 1 ? "call" : "calls"} failed`
+    : `Used ${activities.length} ${activities.length === 1 ? "tool" : "tools"}`;
+}
+
+function renderToolActivity(toolUI, activity) {
+  let activityUI = toolUI.activities.get(activity.id);
+  if (!activityUI) {
+    const row = document.createElement("div");
+    row.className = "tool-activity-row";
+
+    const header = document.createElement("div");
+    header.className = "tool-activity-header";
+
+    const indicator = document.createElement("span");
+    indicator.className = "tool-activity-indicator";
+    indicator.setAttribute("aria-hidden", "true");
+
+    const label = document.createElement("span");
+    label.className = "tool-activity-label";
+
+    const toolName = document.createElement("code");
+    toolName.className = "tool-activity-name";
+
+    const details = document.createElement("details");
+    details.className = "tool-activity-details";
+
+    const detailsSummary = document.createElement("summary");
+    detailsSummary.textContent = "Details";
+
+    const body = document.createElement("div");
+    body.className = "tool-activity-body";
+    details.append(detailsSummary, body);
+
+    header.append(indicator, label, toolName);
+    row.append(header, details);
+    toolUI.list.append(row);
+    activityUI = { ...activity, row, label, toolName, body };
+    toolUI.activities.set(activity.id, activityUI);
+  }
+
+  Object.assign(activityUI, activity);
+  activityUI.row.dataset.status = activity.status;
+  activityUI.label.textContent = getToolActivityCopy(activity.name, activity.status);
+  activityUI.toolName.textContent = activity.name;
+
+  const sections = [`Input\n${formatToolActivityValue(activity.arguments)}`];
+  if (activity.result !== undefined) {
+    sections.push(`Result\n${formatToolActivityValue(activity.result)}`);
+  }
+  activityUI.body.textContent = sections.join("\n\n");
+
+  toolUI.panel.hidden = false;
+  updateToolActivitySummary(toolUI);
+}
+
+function appendStoredToolActivities(contentWrap, activities = []) {
+  if (!activities.length) return;
+  const toolUI = createToolActivityPanel();
+  contentWrap.append(toolUI.panel);
+  for (const [index, activity] of activities.entries()) {
+    renderToolActivity(toolUI, {
+      id: activity.id || `stored-tool-${index}`,
+      name: activity.name || "unknown",
+      status: activity.status === "failed" ? "failed" : "completed",
+      arguments: activity.arguments,
+      result: activity.result
+    });
+  }
+}
+
 function appendMessage(role, content = "", options = {}) {
   elements.emptyState.hidden = true;
 
@@ -912,6 +1059,10 @@ function appendMessage(role, content = "", options = {}) {
     badge.className = "context-badge";
     badge.textContent = options.contextLabel;
     contentWrap.append(badge);
+  }
+
+  if (role === "assistant") {
+    appendStoredToolActivities(contentWrap, options.toolActivities);
   }
 
   const message = document.createElement("div");
@@ -1060,6 +1211,9 @@ function appendAssistantMessage({
   thinkingPanel.append(thinkingSummary, thinkingContent);
   contentWrap.append(thinkingPanel);
 
+  const toolUI = createToolActivityPanel();
+  contentWrap.append(toolUI.panel);
+
   const message = document.createElement("div");
   message.className = "message pending";
   message.textContent = "";
@@ -1076,6 +1230,7 @@ function appendAssistantMessage({
     thinkingPanel,
     thinkingSummary,
     thinkingContent,
+    toolUI,
     hasThinking: false,
     answerStarted: false
   };
@@ -1950,6 +2105,7 @@ function buildOllamaMessages(prompt, page = null) {
       : "",
     "Do not claim you can see visual details that are absent from the page context.",
     "If the requested information is not present, say so plainly.",
+    "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. Request independent tool calls together in the same round so they can run in parallel; keep calls sequential when one needs another call's result.",
     "Format answers in Markdown. Use headings, short paragraphs, bullets, links, and fenced code blocks when they improve readability."
   ].filter(Boolean).join(" ");
 
@@ -2205,7 +2361,11 @@ async function resetChatDomConfiguration() {
   await refreshContextPreview();
 }
 
-async function streamChat(messages, signal, { onThinking, onContent }) {
+async function streamChatRound(
+  messages,
+  signal,
+  { onThinking, onContent, toolsEnabled = true }
+) {
   const thinkingEnabled = elements.thinkingSelect.value === "on";
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: "POST",
@@ -2213,6 +2373,7 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
     body: JSON.stringify({
       model: elements.modelSelect.value,
       messages,
+      ...(toolsEnabled ? { tools: BrowserChatTools.getSchemas() } : {}),
       stream: true,
       think: thinkingEnabled
     }),
@@ -2239,6 +2400,7 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
   let buffer = "";
   let fullText = "";
   let fullThinking = "";
+  const toolCalls = [];
 
   const processEvent = (event) => {
     if (event.error) throw new Error(event.error);
@@ -2255,6 +2417,10 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
     if (contentChunk) {
       fullText += contentChunk;
       onContent(fullText, fullThinking);
+    }
+
+    if (event.message?.tool_calls?.length) {
+      toolCalls.push(...event.message.tool_calls);
     }
   };
 
@@ -2277,7 +2443,175 @@ async function streamChat(messages, signal, { onThinking, onContent }) {
     }
   }
 
-  return { content: fullText, thinking: fullThinking };
+  return {
+    message: {
+      role: "assistant",
+      content: fullText,
+      ...(fullThinking ? { thinking: fullThinking } : {}),
+      ...(toolCalls.length ? { tool_calls: toolCalls } : {})
+    },
+    toolCalls
+  };
+}
+
+async function runToolCallingLoop(
+  messages,
+  signal,
+  {
+    answerNowSignal,
+    onThinking,
+    onContent,
+    onToolCallStart,
+    onToolCallFinish
+  }
+) {
+  let combinedThinking = "";
+  let displayedContent = "";
+  const toolActivities = [];
+
+  const streamFinalAnswer = async () => {
+    messages.push({
+      role: "system",
+      content:
+        "The user selected Answer now. Do not call or wait for more tools. Give the best final answer possible using only the conversation and completed tool results available so far."
+    });
+
+    const response = await streamChatRound(messages, signal, {
+      toolsEnabled: false,
+      onThinking: (thinking) => {
+        onThinking([combinedThinking, thinking].filter(Boolean).join("\n\n"));
+      },
+      onContent: (content, thinking) => {
+        onContent(
+          [displayedContent, content].filter(Boolean).join("\n\n"),
+          [combinedThinking, thinking].filter(Boolean).join("\n\n")
+        );
+      }
+    });
+
+    messages.push(response.message);
+    combinedThinking = [combinedThinking, response.message.thinking]
+      .filter(Boolean)
+      .join("\n\n");
+    displayedContent = [displayedContent, response.message.content]
+      .filter(Boolean)
+      .join("\n\n");
+
+    return {
+      content: displayedContent,
+      thinking: combinedThinking,
+      toolActivities
+    };
+  };
+
+  while (true) {
+    if (answerNowSignal?.aborted) {
+      return streamFinalAnswer();
+    }
+
+    const roundController = new AbortController();
+    const cancelRound = () => roundController.abort();
+    signal.addEventListener("abort", cancelRound, { once: true });
+    answerNowSignal?.addEventListener("abort", cancelRound, { once: true });
+
+    let response;
+    try {
+      response = await streamChatRound(messages, roundController.signal, {
+        onThinking: (thinking) => {
+          onThinking([combinedThinking, thinking].filter(Boolean).join("\n\n"));
+        },
+        onContent: (content, thinking) => {
+          onContent(
+            [displayedContent, content].filter(Boolean).join("\n\n"),
+            [combinedThinking, thinking].filter(Boolean).join("\n\n")
+          );
+        }
+      });
+    } catch (error) {
+      if (
+        error.name === "AbortError" &&
+        answerNowSignal?.aborted &&
+        !signal.aborted
+      ) {
+        return streamFinalAnswer();
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", cancelRound);
+      answerNowSignal?.removeEventListener("abort", cancelRound);
+    }
+
+    messages.push(response.message);
+    combinedThinking = [combinedThinking, response.message.thinking]
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!response.toolCalls.length) {
+      displayedContent = [displayedContent, response.message.content]
+        .filter(Boolean)
+        .join("\n\n");
+      return {
+        content: displayedContent,
+        thinking: combinedThinking,
+        toolActivities
+      };
+    }
+
+    if (response.message.content) {
+      displayedContent = [displayedContent, response.message.content]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
+    const results = await Promise.all(response.toolCalls.map(async (call) => {
+      const activity = {
+        id: crypto.randomUUID(),
+        name: call?.function?.name || "unknown",
+        status: "running",
+        arguments: call?.function?.arguments || {}
+      };
+      toolActivities.push(activity);
+      onToolCallStart?.({ ...activity });
+
+      // Let the browser paint the live tool status before a fast local tool resolves.
+      await new Promise((resolve) => {
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          resolve();
+        };
+        requestAnimationFrame(finish);
+        setTimeout(finish, 100);
+      });
+      signal.throwIfAborted();
+      const content = answerNowSignal?.aborted
+        ? JSON.stringify({
+            ok: false,
+            error: "Tool call cancelled because the user selected Answer now."
+          })
+        : await BrowserChatTools.executeCall(call, {
+            signal: answerNowSignal
+          });
+      let parsedResult = content;
+      let status = "completed";
+      try {
+        parsedResult = JSON.parse(content);
+        if (parsedResult?.ok === false) status = "failed";
+      } catch {
+        // Keep non-JSON tool output readable in the activity details.
+      }
+      Object.assign(activity, { status, result: parsedResult });
+      onToolCallFinish?.({ ...activity });
+
+      return {
+        role: "tool",
+        tool_name: activity.name,
+        content
+      };
+    }));
+    messages.push(...results);
+  }
 }
 
 function cleanGeneratedTitle(value = "", fallbackText = "") {
@@ -2380,6 +2714,15 @@ async function submitPrompt(prompt) {
   });
 
   const controller = new AbortController();
+  const answerNowController = new AbortController();
+  assistantUI.toolUI.answerNowButton.addEventListener("click", () => {
+    if (answerNowController.signal.aborted) return;
+    answerNowController.abort();
+    assistantUI.toolUI.answerNowButton.disabled = true;
+    assistantUI.toolUI.answerNowButton.textContent = "Answering…";
+    assistantUI.toolUI.summary.textContent = "Preparing answer…";
+    assistantUI.toolUI.panel.classList.add("streaming");
+  });
   activeRequest = controller;
   updateSendButton();
 
@@ -2389,7 +2732,8 @@ async function submitPrompt(prompt) {
       rememberDomAttachment(contextAttachment, page);
     }
     const messages = buildOllamaMessages(prompt, page);
-    const answer = await streamChat(messages, controller.signal, {
+    const answer = await runToolCallingLoop(messages, controller.signal, {
+      answerNowSignal: answerNowController.signal,
       onThinking: (thinking) => {
         assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
@@ -2409,6 +2753,7 @@ async function submitPrompt(prompt) {
       },
       onContent: (text) => {
         assistantUI.processingStatus.hidden = true;
+        assistantUI.toolUI.panel.open = false;
         if (!assistantUI.answerStarted) {
           assistantUI.answerStarted = true;
           assistantUI.thinkingPanel.classList.remove("streaming");
@@ -2423,9 +2768,24 @@ async function submitPrompt(prompt) {
         renderMarkdown(assistantUI.message, text);
         assistantUI.message.classList.remove("pending");
         scrollToLatest();
+      },
+      onToolCallStart: (activity) => {
+        assistantUI.processingStatus.hidden = true;
+        assistantUI.toolUI.actions.hidden = false;
+        assistantUI.toolUI.panel.open = true;
+        renderToolActivity(assistantUI.toolUI, activity);
+        scrollToLatest();
+      },
+      onToolCallFinish: (activity) => {
+        renderToolActivity(assistantUI.toolUI, activity);
+        scrollToLatest();
       }
     });
 
+    assistantUI.toolUI.actions.hidden = true;
+    if (assistantUI.toolUI.activities.size) {
+      updateToolActivitySummary(assistantUI.toolUI);
+    }
     assistantUI.processingStatus.hidden = true;
     assistantUI.thinkingPanel.classList.remove("streaming");
     if (answer.thinking) {
@@ -2444,7 +2804,10 @@ async function submitPrompt(prompt) {
       {
         role: "assistant",
         content: answer.content,
-        ...(answer.thinking ? { thinking: answer.thinking } : {})
+        ...(answer.thinking ? { thinking: answer.thinking } : {}),
+        ...(answer.toolActivities?.length
+          ? { toolActivities: answer.toolActivities }
+          : {})
       }
     );
     const chat = chats.find((item) => item.id === chatId);
@@ -2456,6 +2819,7 @@ async function submitPrompt(prompt) {
       void generateTitleForChat(chatId, selectedModel);
     }
   } catch (error) {
+    assistantUI.toolUI.actions.hidden = true;
     if (contextAttachment && !contextAttachment.context) {
       setReplyContextAvailability(contextAttachment, false);
     }

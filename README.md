@@ -57,8 +57,48 @@ On each message, BrowserChat:
 1. Uses `chrome.scripting.executeScript` to inspect the live rendered page.
 2. Packages visible viewport text, other rendered page text, headings, and interactive elements such as links, buttons, inputs, dropdowns, labels, constraints, and available options.
 3. Excludes typed text-field and password values from control metadata.
-4. Adds the structured page context, recent conversation, and user prompt to an Ollama `/api/chat` request.
-5. Streams Ollama's separate thinking and answer fields into the side panel.
+4. Adds the structured page context, recent conversation, user prompt, and registered tool schemas to an Ollama `/api/chat` request.
+5. Runs a multi-turn tool calling loop. A live activity panel shows when each tool starts, its exact registered name, inputs, completion state, and result. Tool results are added to the conversation and sent back to Ollama until the model returns a final response.
+6. Streams Ollama's separate thinking and answer fields into the side panel.
+
+## Tools
+
+BrowserChat currently provides a `calculate` tool with addition, subtraction,
+multiplication, and division. The tool validates numeric inputs and returns a
+structured error for invalid operations or division by zero.
+
+Tools are organized by responsibility:
+
+```text
+tools/
+├── registry.js
+├── calculator.js
+├── active-tab.js
+├── page-search.js
+└── index.js
+```
+
+`registry.js` owns discovery and dispatch, each tool module defines its schemas
+and implementations, and `index.js` initializes all modules after they load.
+Add a tool with `BrowserChatTools.define((register) => register({ schema,
+execute }))`, then load its file before `tools/index.js` in `sidepanel.html`.
+The chat loop automatically advertises every registered schema to Ollama and
+dispatches calls by function name, so the loop itself does not need to change.
+During a response, the activity panel uses a friendly progress label such as
+**Calculating…** while also displaying the exact tool name, such as `calculate`.
+Completed tool activity is kept with the saved assistant message and can be
+expanded later to inspect its input and result.
+
+The tool loop has no fixed round limit. While it is active, **Answer now**
+cancels the current tool-enabled model round and starts a final request with
+tools disabled, using the conversation and completed tool results accumulated
+so far. Tool implementations may accept a second `{ signal }` argument if they
+need to cancel long-running work when **Answer now** is selected.
+
+When Ollama requests multiple tools in one response, BrowserChat runs those
+calls concurrently with `Promise.all` and returns every result in one follow-up
+request. Independent work can therefore share a round; work that consumes a
+previous tool result still requires a later round.
 
 Use **Preview page context** below the composer to inspect the exact structured page information that will be attached to the next prompt.
 
