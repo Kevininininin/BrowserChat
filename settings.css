@@ -354,13 +354,19 @@ h1 {
 .prompt-field-group summary::-webkit-details-marker { display: none; }
 
 .prompt-field-group summary::after {
-  content: "+";
-  color: #777770;
-  font-size: 18px;
-  font-weight: 400;
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-right: 1.5px solid #777770;
+  border-bottom: 1.5px solid #777770;
+  transform: rotate(45deg);
+  transition: transform 140ms ease;
 }
 
-.prompt-field-group[open] summary::after { content: "−"; }
+.prompt-field-group[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
 
 .prompt-field-group summary span {
   display: flex;
@@ -387,6 +393,20 @@ h1 {
   font-weight: 700;
 }
 
+.prompt-field-title {
+  display: block;
+}
+
+.prompt-field-description {
+  display: block;
+  max-width: 760px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
 .prompt-field-list textarea {
   display: block;
   width: 100%;
@@ -405,10 +425,6 @@ h1 {
   background: #fff;
   border-color: #9680ca;
   box-shadow: 0 0 0 3px rgb(128 98 193 / 11%);
-}
-
-.wrapper-fields {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .prompt-editor-heading {
@@ -596,7 +612,6 @@ h1 {
   .architecture-notes,
   .format-notes { grid-template-columns: 1fr; }
   .managed-instructions-card { grid-template-columns: 1fr; }
-  .wrapper-fields { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {

@@ -207,32 +207,62 @@ flowchart TD
             <details class="prompt-field-group">
               <summary><span><strong>Page context and DOM structure</strong><small>Instructions used when page content is included</small></span></summary>
               <div class="prompt-field-list">
-                <label>Page context instruction<textarea data-prompt-key="pageContextInstruction" rows="3"></textarea></label>
-                <label>No page context instruction<textarea data-prompt-key="noPageContextInstruction" rows="3"></textarea></label>
-                <label>Selected element instruction<textarea data-prompt-key="selectedElementInstruction" rows="3"></textarea></label>
-                <label>DOM structure explanation<textarea data-prompt-key="domStructureInstruction" rows="6"></textarea></label>
-                <label>Untrusted page content instruction<textarea data-prompt-key="untrustedContentInstruction" rows="3"></textarea></label>
+                <label>
+                  <span class="prompt-field-title">Page context instruction</span>
+                  <span class="prompt-field-description">Sent in the system message whenever DOM context from the active page is attached.</span>
+                  <textarea data-prompt-key="pageContextInstruction" rows="3"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">No page context instruction</span>
+                  <span class="prompt-field-description">Sent in the system message when the user’s message does not include any captured page context.</span>
+                  <textarea data-prompt-key="noPageContextInstruction" rows="3"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Selected element instruction</span>
+                  <span class="prompt-field-description">Sent in addition to the page-context instructions when the user captures one selected DOM element instead of the broader page.</span>
+                  <textarea data-prompt-key="selectedElementInstruction" rows="3"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">DOM structure explanation</span>
+                  <span class="prompt-field-description">Sent whenever page context is attached to explain the JSON structure, included DOM information, and capture limitations.</span>
+                  <textarea data-prompt-key="domStructureInstruction" rows="6"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Untrusted page content instruction</span>
+                  <span class="prompt-field-description">Sent whenever page context is attached. It tells the model to treat captured page text and attributes as data, not as trusted instructions.</span>
+                  <textarea data-prompt-key="untrustedContentInstruction" rows="3"></textarea>
+                </label>
               </div>
             </details>
 
             <details class="prompt-field-group">
               <summary><span><strong>Behavior, tools, and output</strong><small>General instructions appended to the system message</small></span></summary>
               <div class="prompt-field-list">
-                <label>Visual limitations<textarea data-prompt-key="visualLimitsInstruction" rows="3"></textarea></label>
-                <label>Missing information behavior<textarea data-prompt-key="missingInformationInstruction" rows="3"></textarea></label>
-                <label>Tool behavior<textarea data-prompt-key="toolInstruction" rows="5"></textarea></label>
-                <label>Markdown formatting<textarea data-prompt-key="markdownInstruction" rows="4"></textarea></label>
-                <label>Mermaid diagrams<textarea data-prompt-key="mermaidInstruction" rows="7"></textarea></label>
-              </div>
-            </details>
-
-            <details class="prompt-field-group">
-              <summary><span><strong>Structured message wrappers</strong><small>Literal text placed around the JSON DOM payload and question</small></span></summary>
-              <div class="prompt-field-list wrapper-fields">
-                <label>Page context opening text<textarea data-prompt-key="pageContextOpen" rows="2"></textarea></label>
-                <label>Page context closing text<textarea data-prompt-key="pageContextClose" rows="2"></textarea></label>
-                <label>User question opening text<textarea data-prompt-key="userQuestionOpen" rows="2"></textarea></label>
-                <label>User question closing text<textarea data-prompt-key="userQuestionClose" rows="2"></textarea></label>
+                <label>
+                  <span class="prompt-field-title">Visual limitations</span>
+                  <span class="prompt-field-description">Sent on every message to prevent the model from claiming it can see visual details that were not captured.</span>
+                  <textarea data-prompt-key="visualLimitsInstruction" rows="3"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Missing information behavior</span>
+                  <span class="prompt-field-description">Sent on every message to define how the model should respond when the requested information is unavailable.</span>
+                  <textarea data-prompt-key="missingInformationInstruction" rows="3"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Tool behavior</span>
+                  <span class="prompt-field-description">Sent on every message when describing how the model should choose, group, and sequence available tool calls.</span>
+                  <textarea data-prompt-key="toolInstruction" rows="5"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Markdown formatting</span>
+                  <span class="prompt-field-description">Sent on every message to guide the structure and formatting of the model’s final response.</span>
+                  <textarea data-prompt-key="markdownInstruction" rows="4"></textarea>
+                </label>
+                <label>
+                  <span class="prompt-field-title">Mermaid diagrams</span>
+                  <span class="prompt-field-description">Sent on every message to explain when diagrams are useful and which Mermaid syntax BrowserChat can render.</span>
+                  <textarea data-prompt-key="mermaidInstruction" rows="7"></textarea>
+                </label>
               </div>
             </details>
           </section>
