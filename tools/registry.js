@@ -37,6 +37,10 @@
     return [...registry.values()].map(({ schema }) => schema);
   }
 
+  function hasTool(name) {
+    return registry.has(name);
+  }
+
   async function executeCall(call, context = {}) {
     const name = call?.function?.name;
     const tool = registry.get(name);
@@ -63,6 +67,7 @@
     initialize,
     register: registerTool,
     getSchemas,
+    hasTool,
     executeCall
   });
 })();

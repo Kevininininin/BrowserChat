@@ -34,6 +34,13 @@
             </svg>
             <span>Response Formats</span>
           </button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="skills" data-panel="skills">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
+              <path d="m5 7 7 4 7-4M12 11v10"/>
+            </svg>
+            <span>Skills</span>
+          </button>
           <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="system-prompt" data-panel="system-prompt">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>
@@ -63,39 +70,82 @@
             <div class="diagram-key" aria-label="Diagram legend">
               <span><i class="key-dot input"></i>Input</span>
               <span><i class="key-dot model"></i>Model</span>
+              <span><i class="key-dot skill"></i>Skill runtime</span>
               <span><i class="key-dot tool"></i>Tool runtime</span>
               <span><i class="key-dot output"></i>Output</span>
+              <label class="architecture-toggle">
+                <span>Skills</span>
+                <input id="architectureSkillsToggle" type="checkbox" />
+                <i aria-hidden="true"></i>
+              </label>
             </div>
 
             <div class="flow-canvas" aria-label="Agent tool calling flow">
-              <pre class="mermaid">
-flowchart TD
-    A["User submits a prompt"] --> B["Build conversation messages"]
-    B --> C["Send messages and all tool schemas to Ollama"]
-    C --> D{"Did Ollama request tools?"}
-    D -- No --> E["Display and save final answer"]
-    D -- Yes --> F["Look up each tool by name"]
-    F --> G["Execute tool functions"]
-    G --> H["Append tool results as role: tool messages"]
-    H --> C
-
-    classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
-    classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
-    classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
-    classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class A,B input
-    class C,D model
-    class F,G,H tool
-    class E output
-              </pre>
+              <div id="runtimeArchitectureDiagram" class="settings-mermaid"></div>
             </div>
           </div>
 
           <div class="architecture-notes">
-            <article><strong>Model decides</strong><span>Ollama can request zero, one, or multiple tools in a round.</span></article>
+            <article><strong>Skills are selective</strong><span>When enabled, only selected skill instructions expand the effective system prompt.</span></article>
             <article><strong>Tools stay local</strong><span>BrowserChat executes registered functions inside the extension.</span></article>
-            <article><strong>Loop is bounded</strong><span>The agent repeats until it has a final response or reaches its safety limit.</span></article>
+            <article><strong>Tools can repeat</strong><span>Ollama can request zero, one, or multiple tools in each round before answering.</span></article>
           </div>
+        </section>
+
+        <section id="skills" class="settings-panel" role="tabpanel" hidden>
+          <header class="panel-header">
+            <div>
+              <span class="eyebrow">Reusable instructions</span>
+              <h1>Skills</h1>
+              <p>Give Ollama focused instructions for specialized tasks. Skills can be chosen automatically or explicitly from the chat composer.</p>
+            </div>
+            <button id="createSkillButton" class="settings-primary-button" type="button">Create skill</button>
+          </header>
+
+          <section class="skills-master-card">
+            <div>
+              <strong>Use skills in chats</strong>
+              <span>When enabled, Ollama selects relevant skills before entering the normal tool-calling loop.</span>
+            </div>
+            <label class="switch-control">
+              <input id="skillsEnabledToggle" type="checkbox" />
+              <span aria-hidden="true"></span>
+              <b id="skillsEnabledLabel">On</b>
+            </label>
+          </section>
+
+          <div id="skillsList" class="skills-list" aria-live="polite"></div>
+          <p id="skillsEmptyState" class="skills-empty-state" hidden>No skills yet. Create one to add specialized instructions.</p>
+
+          <dialog id="skillEditorDialog" class="skill-editor-dialog">
+            <form id="skillEditorForm" method="dialog">
+              <div class="skill-dialog-header">
+                <div>
+                  <span class="eyebrow">Skill instructions</span>
+                  <h2 id="skillEditorTitle">Create skill</h2>
+                </div>
+                <button id="closeSkillEditorButton" class="dialog-close-button" type="button" aria-label="Close">×</button>
+              </div>
+              <label>
+                <span>Name</span>
+                <input id="skillNameInput" maxlength="80" required />
+              </label>
+              <label>
+                <span>Description</span>
+                <textarea id="skillDescriptionInput" rows="3" maxlength="500" required></textarea>
+                <small>Used by Ollama when deciding whether this skill applies.</small>
+              </label>
+              <label>
+                <span>Instructions</span>
+                <textarea id="skillInstructionsInput" rows="12" required></textarea>
+                <small>Attached to the effective system prompt only when this skill is selected.</small>
+              </label>
+              <div class="skill-dialog-actions">
+                <button id="cancelSkillEditorButton" class="settings-secondary-button" type="button">Cancel</button>
+                <button class="settings-primary-button" type="submit">Save skill</button>
+              </div>
+            </form>
+          </dialog>
         </section>
 
         <section id="formats" class="settings-panel" role="tabpanel" hidden>
@@ -254,14 +304,14 @@ flowchart TD
                   <textarea data-prompt-key="toolInstruction" rows="5"></textarea>
                 </label>
                 <label>
+                  <span class="prompt-field-title">Skill and tool boundary</span>
+                  <span class="prompt-field-description">Sent on every message to explain that selected skills are already-applied prompt instructions and must never be requested as tool calls.</span>
+                  <textarea data-prompt-key="skillInstruction" rows="4"></textarea>
+                </label>
+                <label>
                   <span class="prompt-field-title">Markdown formatting</span>
                   <span class="prompt-field-description">Sent on every message to guide the structure and formatting of the model’s final response.</span>
                   <textarea data-prompt-key="markdownInstruction" rows="4"></textarea>
-                </label>
-                <label>
-                  <span class="prompt-field-title">Mermaid diagrams</span>
-                  <span class="prompt-field-description">Sent on every message to explain when diagrams are useful and which Mermaid syntax BrowserChat can render.</span>
-                  <textarea data-prompt-key="mermaidInstruction" rows="7"></textarea>
                 </label>
               </div>
             </details>
@@ -270,6 +320,8 @@ flowchart TD
       </main>
     </div>
     <script src="config/system-prompt.js"></script>
+    <script src="skills/registry.js"></script>
+    <script src="skills/defaults/mermaid.js"></script>
     <script src="assets/vendor/mermaid.min.js"></script>
     <script src="settings.js"></script>
   </body>

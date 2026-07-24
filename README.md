@@ -57,9 +57,39 @@ On each message, BrowserChat:
 1. Uses `chrome.scripting.executeScript` to inspect the live rendered page.
 2. Packages visible viewport text, other rendered page text, headings, and interactive elements such as links, buttons, inputs, dropdowns, labels, constraints, and available options.
 3. Excludes typed text-field and password values from control metadata.
-4. Adds the structured page context, recent conversation, user prompt, and registered tool schemas to an Ollama `/api/chat` request.
-5. Runs a multi-turn tool calling loop. A live activity panel shows when each tool starts, its exact registered name, inputs, completion state, and result. Tool results are added to the conversation and sent back to Ollama until the model returns a final response.
-6. Streams Ollama's separate thinking and answer fields into the side panel.
+4. When skills are enabled, asks Ollama to select relevant skills from their names and descriptions. An explicitly selected slash-command skill skips this selection round.
+5. Adds only the selected skill instructions to the effective system prompt, then attaches the structured page context, recent conversation, user prompt, and registered tool schemas.
+6. Shows a separate, persisted skill-usage panel with each selected skill, whether it was selected automatically or explicitly, and the exact instructions injected into the prompt.
+7. Runs a multi-turn tool calling loop. A separate live activity panel shows when each tool starts, its exact requested name, inputs, completion state, and result. Requests for names outside the registered tool catalog are labeled as unsupported tool requests. Tool results are added to the conversation and sent back to Ollama until the model returns a final response.
+8. Streams Ollama's separate thinking and answer fields into the side panel.
+
+## Skills
+
+Type `/` in the composer to open the skill picker. Choosing a skill attaches it
+to the next message explicitly. With no explicit choice, Ollama first receives
+the enabled skill catalog and may select any skill that materially applies.
+Only selected instructions are added to the main system prompt.
+
+Skills can be enabled or bypassed globally from **Settings → Skills**. That page
+also supports creating, editing, and deleting locally stored skills. The
+**Agent Runtime** settings diagram mirrors the same toggle and redraws the
+architecture with or without the skill-selection phase.
+
+The built-in Mermaid skill is enabled by default and lives separately from the
+base prompt:
+
+```text
+skills/
+├── registry.js
+└── defaults/
+    └── mermaid.js
+```
+
+`registry.js` owns normalization, local persistence, selection messages, and
+effective-prompt composition. Default skill modules register themselves
+independently, while user-created skills are stored in `chrome.storage.local`.
+The default system prompt contains no Mermaid instructions; those instructions
+are attached only when Mermaid is explicitly or implicitly selected.
 
 ## Tools
 

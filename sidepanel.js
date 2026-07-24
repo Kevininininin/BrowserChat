@@ -57,6 +57,15 @@ const elements = {
   emptyState: document.querySelector("#emptyState"),
   form: document.querySelector("#chatForm"),
   input: document.querySelector("#promptInput"),
+  skillPicker: document.querySelector("#skillPicker"),
+  skillPickerList: document.querySelector("#skillPickerList"),
+  skillPickerEmpty: document.querySelector("#skillPickerEmpty"),
+  skillChip: document.querySelector("#skillChip"),
+  skillChipLabel: document.querySelector("#skillChipLabel"),
+  skillChipMenu: document.querySelector("#skillChipMenu"),
+  skillChipPreviewButton: document.querySelector("#skillChipPreviewButton"),
+  skillChipConfigureButton: document.querySelector("#skillChipConfigureButton"),
+  removeSkillButton: document.querySelector("#removeSkillButton"),
   sendButton: document.querySelector("#sendButton"),
   modelSelect: document.querySelector("#modelSelect"),
   thinkingSelect: document.querySelector("#thinkingSelect"),
@@ -119,6 +128,7 @@ let conversationModel = null;
 let domContextEnabled = false;
 let lastCaretRange = null;
 let contextChipMenuCloseTimer = null;
+let skillChipMenuCloseTimer = null;
 let previewMode = "preview";
 let domConfigurationScope = null;
 let domConfigurationDraft = null;
@@ -127,6 +137,11 @@ let previewCaptureSequence = 0;
 let shouldAutoScrollConversation = true;
 let userSystemPrompt = BrowserChatPromptConfig.DEFAULT_SYSTEM_PROMPT;
 let userPromptSettings = BrowserChatPromptConfig.normalizePromptSettings();
+let skillsEnabled = true;
+let availableSkills = [];
+let explicitSkillId = null;
+let skillPickerMatches = [];
+let skillPickerActiveIndex = 0;
 const markdownRenderVersions = new WeakMap();
 const mermaidRenderTimers = new WeakMap();
 let currentSite = {
@@ -275,6 +290,19 @@ async function loadSystemPrompt() {
   );
 }
 
+async function loadSkills() {
+  const state = await BrowserChatSkills.load();
+  skillsEnabled = state.enabled;
+  availableSkills = state.skills;
+  if (
+    explicitSkillId &&
+    (!skillsEnabled || !availableSkills.some((skill) => skill.id === explicitSkillId))
+  ) {
+    setExplicitSkill(null);
+  }
+  if (!skillsEnabled) closeSkillPicker();
+}
+
 function setChatMenu(open) {
   elements.chatMenu.hidden = !open;
   elements.chatPickerButton.setAttribute("aria-expanded", String(open));
@@ -374,7 +402,8 @@ function renderCurrentConversation() {
   elements.emptyState.hidden = chatHistory.length > 0;
   for (const message of chatHistory) {
     appendMessage(message.role, message.content, {
-      toolActivities: message.toolActivities
+      toolActivities: message.toolActivities,
+      skillActivities: message.skillActivities
     });
   }
 }
@@ -548,6 +577,102 @@ function updateSendButton() {
     (domContextEnabled && !currentSite.hasAccess);
 }
 
+function escapeSkillPickerText(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function closeSkillPicker() {
+  elements.skillPicker.hidden = true;
+  skillPickerMatches = [];
+  skillPickerActiveIndex = 0;
+  elements.input.removeAttribute("aria-activedescendant");
+}
+
+function getSkillSlashQuery() {
+  if (!skillsEnabled || explicitSkillId) return null;
+  const text = getPromptText();
+  const match = text.match(/(?:^|\s)\/([^\s]*)$/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function renderSkillPicker(query = getSkillSlashQuery()) {
+  if (query === null) {
+    closeSkillPicker();
+    return;
+  }
+
+  skillPickerMatches = availableSkills.filter((skill) => {
+    if (!query) return true;
+    return `${skill.name} ${skill.description}`
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .some((word) => word.startsWith(query));
+  });
+  skillPickerActiveIndex = Math.min(
+    skillPickerActiveIndex,
+    Math.max(0, skillPickerMatches.length - 1)
+  );
+  elements.skillPickerList.innerHTML = skillPickerMatches.map((skill, index) => `
+    <button
+      id="skill-picker-option-${index}"
+      class="skill-picker-item${index === skillPickerActiveIndex ? " active" : ""}"
+      type="button"
+      role="option"
+      aria-selected="${index === skillPickerActiveIndex}"
+      data-skill-picker-id="${escapeSkillPickerText(skill.id)}"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
+        <path d="m5 7 7 4 7-4M12 11v10"/>
+      </svg>
+      <span class="skill-picker-item-copy">
+        <strong>${escapeSkillPickerText(skill.name)}</strong>
+        <small>${escapeSkillPickerText(skill.description || "No description")}</small>
+      </span>
+    </button>
+  `).join("");
+  elements.skillPickerEmpty.hidden = skillPickerMatches.length > 0;
+  elements.skillPicker.hidden = false;
+  if (skillPickerMatches.length) {
+    elements.input.setAttribute(
+      "aria-activedescendant",
+      `skill-picker-option-${skillPickerActiveIndex}`
+    );
+  }
+}
+
+function setExplicitSkill(skillId = null, { removeSlashQuery = false } = {}) {
+  const skill = availableSkills.find((item) => item.id === skillId);
+
+  if (removeSlashQuery && skill) {
+    insertSkillAtSlashCommand(skill);
+  } else {
+    closeSkillChipMenu();
+    elements.skillChip.remove();
+  }
+  explicitSkillId = skill?.id || null;
+
+  if (skill) {
+    elements.skillChipLabel.textContent = skill.name;
+    if (!elements.input.contains(elements.skillChip)) {
+      insertChipAtCaret(elements.skillChip);
+    }
+  } else {
+    elements.skillChip.hidden = true;
+  }
+  closeSkillPicker();
+  updateSendButton();
+}
+
+function chooseActiveSkill() {
+  const skill = skillPickerMatches[skillPickerActiveIndex];
+  if (skill) setExplicitSkill(skill.id, { removeSlashQuery: true });
+}
+
 function setToolMenu(open) {
   elements.toolMenu.hidden = !open;
   elements.toolMenuButton.setAttribute("aria-expanded", String(open));
@@ -620,6 +745,50 @@ function scheduleContextChipMenuClose() {
   }, 120);
 }
 
+function positionSkillChipMenu() {
+  const menu = elements.skillChipMenu;
+  if (!menu.classList.contains("is-open")) return;
+
+  const chipBounds = elements.skillChip.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth;
+  const menuHeight = menu.offsetHeight;
+  const horizontalPadding = 8;
+  menu.style.left = `${Math.min(
+    Math.max(chipBounds.left + (chipBounds.width - menuWidth) / 2, horizontalPadding),
+    window.innerWidth - menuWidth - horizontalPadding
+  )}px`;
+  menu.style.top = `${Math.max(chipBounds.top - menuHeight - 5, horizontalPadding)}px`;
+}
+
+function openSkillChipMenu() {
+  clearTimeout(skillChipMenuCloseTimer);
+  const menu = elements.skillChipMenu;
+  if (!menu.classList.contains("is-open")) {
+    menu.classList.add("is-open");
+    document.body.append(menu);
+  }
+  positionSkillChipMenu();
+}
+
+function closeSkillChipMenu() {
+  clearTimeout(skillChipMenuCloseTimer);
+  const menu = elements.skillChipMenu;
+  if (!menu.classList.contains("is-open")) return;
+  menu.classList.remove("is-open");
+  menu.removeAttribute("style");
+  elements.skillChip.append(menu);
+}
+
+function scheduleSkillChipMenuClose() {
+  clearTimeout(skillChipMenuCloseTimer);
+  skillChipMenuCloseTimer = setTimeout(() => {
+    if (!elements.skillChip.matches(":hover, :focus-within") &&
+        !elements.skillChipMenu.matches(":hover, :focus-within")) {
+      closeSkillChipMenu();
+    }
+  }, 120);
+}
+
 function enableReplyChipMenuOverlay(chip, menu) {
   let closeTimer = null;
 
@@ -680,12 +849,16 @@ function resizeInput() {
 
 function getPromptText() {
   const clone = elements.input.cloneNode(true);
-  clone.querySelectorAll(".context-chip").forEach((chip) => chip.remove());
+  clone.querySelectorAll(".context-chip, .skill-chip").forEach((chip) => chip.remove());
   return clone.innerText.replace(/\u00a0/g, " ");
 }
 
 function setPromptText(text = "") {
   elements.input.replaceChildren(document.createTextNode(text));
+  if (explicitSkillId) {
+    elements.skillChip.hidden = false;
+    elements.input.append(elements.skillChip, document.createTextNode(" "));
+  }
   if (domContextEnabled) {
     elements.contextChip.hidden = false;
     elements.input.append(elements.contextChip, document.createTextNode(" "));
@@ -732,6 +905,7 @@ function moveCaretAfter(node) {
 }
 
 function insertChipAtCaret(chip) {
+  chip.remove();
   chip.hidden = false;
   const range = lastCaretRange;
   const canInsertAtCaret = range && elements.input.contains(range.startContainer);
@@ -744,6 +918,70 @@ function insertChipAtCaret(chip) {
   const spacer = document.createTextNode(" ");
   chip.after(spacer);
   moveCaretAfter(spacer);
+}
+
+function insertSkillAtSlashCommand(skill) {
+  if (!skill) return;
+  const query = getSkillSlashQuery();
+  const range = lastCaretRange;
+  const canReplaceInTextNode =
+    query !== null &&
+    range?.collapsed &&
+    range.startContainer.nodeType === Node.TEXT_NODE &&
+    range.startOffset >= query.length + 1;
+
+  if (canReplaceInTextNode) {
+    const textNode = range.startContainer;
+    const commandStart = range.startOffset - query.length - 1;
+    if (
+      textNode.textContent
+        .slice(commandStart, range.startOffset)
+        .toLowerCase() === `/${query}`
+    ) {
+      const commandRange = document.createRange();
+      commandRange.setStart(textNode, commandStart);
+      commandRange.setEnd(textNode, range.startOffset);
+      commandRange.deleteContents();
+      elements.skillChip.remove();
+      elements.skillChip.hidden = false;
+      commandRange.insertNode(elements.skillChip);
+      const spacer = document.createTextNode(" ");
+      elements.skillChip.after(spacer);
+      moveCaretAfter(spacer);
+      return;
+    }
+  }
+
+  const prompt = getPromptText().replace(/(?:^|\s)\/[^\s]*$/, "");
+  setPromptText(prompt);
+  insertChipAtCaret(elements.skillChip);
+}
+
+function isCaretImmediatelyAfterChip(chip) {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!range.collapsed || !chip.parentNode) return false;
+  if (range.startContainer === chip.parentNode) {
+    return range.startOffset === [...chip.parentNode.childNodes].indexOf(chip) + 1;
+  }
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = range.startContainer;
+    return (
+      textNode.previousSibling === chip &&
+      range.startOffset === textNode.textContent.length &&
+      /^\s*$/.test(textNode.textContent)
+    );
+  }
+  return false;
+}
+
+function getComposerAttachmentOrder() {
+  return [...elements.input.children].flatMap((child) => {
+    if (child === elements.skillChip && explicitSkillId) return ["skill"];
+    if (child === elements.contextChip && domContextEnabled) return ["dom"];
+    return [];
+  });
 }
 
 function isConversationNearBottom() {
@@ -1039,6 +1277,47 @@ function formatToolActivityValue(value) {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function createSkillUsagePanel(skills = []) {
+  const panel = document.createElement("details");
+  panel.className = "skill-usage-panel";
+  panel.hidden = !skills.length;
+
+  const summary = document.createElement("summary");
+  summary.textContent = `${skills.length} ${skills.length === 1 ? "skill" : "skills"} used`;
+
+  const list = document.createElement("div");
+  list.className = "skill-usage-list";
+
+  for (const skill of skills) {
+    const row = document.createElement("details");
+    row.className = "skill-usage-row";
+    const rowSummary = document.createElement("summary");
+    const name = document.createElement("strong");
+    name.textContent = skill.name || "Untitled skill";
+    const source = document.createElement("span");
+    source.className = "skill-selection-source";
+    source.textContent = skill.selectionSource === "explicit"
+      ? "Selected explicitly"
+      : "Selected automatically";
+    rowSummary.append(name, source);
+
+    const body = document.createElement("div");
+    body.className = "skill-usage-body";
+    const description = document.createElement("p");
+    description.textContent = skill.description || "No description";
+    const instructionsLabel = document.createElement("strong");
+    instructionsLabel.textContent = "Injected instructions";
+    const instructions = document.createElement("pre");
+    instructions.textContent = skill.instructions || "No instructions";
+    body.append(description, instructionsLabel, instructions);
+    row.append(rowSummary, body);
+    list.append(row);
+  }
+
+  panel.append(summary, list);
+  return panel;
+}
+
 function createToolActivityPanel() {
   const panel = document.createElement("details");
   panel.className = "tool-activity-panel";
@@ -1085,8 +1364,11 @@ function updateToolActivitySummary(toolUI) {
   }
 
   toolUI.panel.classList.remove("streaming");
+  const unsupported = activities.filter((activity) => activity.unsupported).length;
   const failed = activities.filter((activity) => activity.status === "failed").length;
-  toolUI.summary.textContent = failed
+  toolUI.summary.textContent = unsupported
+    ? `${unsupported} unsupported tool ${unsupported === 1 ? "request" : "requests"}`
+    : failed
     ? `${failed} tool ${failed === 1 ? "call" : "calls"} failed`
     : `Used ${activities.length} ${activities.length === 1 ? "tool" : "tools"}`;
 }
@@ -1129,7 +1411,10 @@ function renderToolActivity(toolUI, activity) {
 
   Object.assign(activityUI, activity);
   activityUI.row.dataset.status = activity.status;
-  activityUI.label.textContent = getToolActivityCopy(activity.name, activity.status);
+  activityUI.row.dataset.unsupported = String(Boolean(activity.unsupported));
+  activityUI.label.textContent = activity.unsupported
+    ? "Unsupported tool requested"
+    : getToolActivityCopy(activity.name, activity.status);
   activityUI.toolName.textContent = activity.name;
 
   const sections = [`Input\n${formatToolActivityValue(activity.arguments)}`];
@@ -1151,6 +1436,7 @@ function appendStoredToolActivities(contentWrap, activities = []) {
       id: activity.id || `stored-tool-${index}`,
       name: activity.name || "unknown",
       status: activity.status === "failed" ? "failed" : "completed",
+      unsupported: Boolean(activity.unsupported),
       arguments: activity.arguments,
       result: activity.result
     });
@@ -1174,6 +1460,9 @@ function appendMessage(role, content = "", options = {}) {
   }
 
   if (role === "assistant") {
+    if (options.skillActivities?.length) {
+      contentWrap.append(createSkillUsagePanel(options.skillActivities));
+    }
     appendStoredToolActivities(contentWrap, options.toolActivities);
   }
 
@@ -1252,9 +1541,76 @@ function createReplyContextChip(attachment) {
   return chip;
 }
 
+function openSkillsSettings() {
+  void chrome.tabs.create({
+    url: chrome.runtime.getURL("settings.html#skills")
+  });
+}
+
+function createReplySkillChip(skill) {
+  const chip = document.createElement("div");
+  chip.className = "skill-chip reply-context-chip reply-skill-chip";
+  chip.tabIndex = 0;
+  chip.setAttribute("aria-label", `${skill.name} skill`);
+  chip.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"></path>
+      <path d="m5 7 7 4 7-4M12 11v10"></path>
+    </svg>
+    <span>${escapeHtml(skill.name)}</span>
+  `;
+
+  const menu = document.createElement("div");
+  menu.className = "chip-menu reply-chip-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", `${skill.name} skill options`);
+
+  const previewButton = document.createElement("button");
+  previewButton.type = "button";
+  previewButton.textContent = "Preview";
+  previewButton.setAttribute("role", "menuitem");
+  previewButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openSkillPreview(skill);
+  });
+
+  const configureButton = document.createElement("button");
+  configureButton.type = "button";
+  configureButton.textContent = "Configure";
+  configureButton.setAttribute("role", "menuitem");
+  configureButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openSkillsSettings();
+  });
+
+  menu.append(previewButton, configureButton);
+  chip.append(menu);
+  enableReplyChipMenuOverlay(chip, menu);
+  return chip;
+}
+
+function addReplyAttachments(attachmentArea, {
+  order = [],
+  contextAttachment = null,
+  skills = [],
+  requestedSkillId = null
+} = {}) {
+  const attachments = [];
+
+  for (const kind of order) {
+    if (kind === "dom" && contextAttachment) {
+      attachments.push(createReplyContextChip(contextAttachment));
+      contextAttachment = null;
+    }
+  }
+  if (contextAttachment) attachments.push(createReplyContextChip(contextAttachment));
+  attachmentArea.replaceChildren(...attachments);
+}
+
 function appendAssistantMessage({
   thinkingEnabled = false,
-  contextAttachment = null,
   modelSwitching = false
 } = {}) {
   elements.emptyState.hidden = true;
@@ -1264,10 +1620,13 @@ function appendAssistantMessage({
 
   const contentWrap = document.createElement("div");
   contentWrap.style.width = "100%";
+  const attachmentArea = document.createElement("div");
+  attachmentArea.className = "reply-attachments";
+  contentWrap.append(attachmentArea);
 
-  if (contextAttachment) {
-    contentWrap.append(createReplyContextChip(contextAttachment));
-  }
+  const skillUsageSlot = document.createElement("div");
+  skillUsageSlot.className = "skill-usage-slot";
+  contentWrap.append(skillUsageSlot);
 
   const processingStatus = document.createElement("div");
   processingStatus.className = "processing-status";
@@ -1343,6 +1702,12 @@ function appendAssistantMessage({
     thinkingSummary,
     thinkingContent,
     toolUI,
+    addAttachments: (attachments) => addReplyAttachments(attachmentArea, attachments),
+    showSkills: (skills) => {
+      skillUsageSlot.replaceChildren(
+        ...(skills.length ? [createSkillUsagePanel(skills)] : [])
+      );
+    },
     hasThinking: false,
     answerStarted: false
   };
@@ -2201,12 +2566,16 @@ async function captureActivePageContext(
   return result;
 }
 
-function buildOllamaMessages(prompt, page = null) {
-  const systemPrompt = BrowserChatPromptConfig.buildSystemPrompt({
+function buildOllamaMessages(prompt, page = null, selectedSkills = []) {
+  const baseSystemPrompt = BrowserChatPromptConfig.buildSystemPrompt({
     corePrompt: userSystemPrompt,
     page,
     settings: userPromptSettings
   });
+  const systemPrompt = BrowserChatSkills.composeSystemPrompt(
+    baseSystemPrompt,
+    selectedSkills
+  );
 
   const userContent = page
     ? [
@@ -2223,6 +2592,46 @@ function buildOllamaMessages(prompt, page = null) {
     ...chatHistory.slice(-MAX_HISTORY_MESSAGES),
     { role: "user", content: userContent }
   ];
+}
+
+async function selectSkillsForPrompt(prompt, signal, selectedSkillId = null) {
+  if (!skillsEnabled || !availableSkills.length) return [];
+
+  const explicitlySelected = availableSkills.find(
+    (skill) => skill.id === selectedSkillId
+  );
+  if (explicitlySelected) return [explicitlySelected];
+
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: elements.modelSelect.value,
+        messages: BrowserChatSkills.buildSelectionMessages(
+          prompt,
+          availableSkills
+        ),
+        stream: false,
+        think: false,
+        format: "json"
+      }),
+      signal
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    const selectedIds = BrowserChatSkills.parseSelection(
+      data.message?.content,
+      availableSkills
+    );
+    return selectedIds
+      .map((id) => availableSkills.find((skill) => skill.id === id))
+      .filter(Boolean);
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    console.warn("Skill selection failed; continuing without skills.", error);
+    return [];
+  }
 }
 
 async function refreshContextPreview() {
@@ -2301,6 +2710,26 @@ function openStoredContextPreview(context) {
     `${context.stats.headingCount.toLocaleString()} headings`,
     `${context.stats.interactiveElementCount.toLocaleString()} interactive elements`
   ].join(" · ");
+  elements.domModeControls.hidden = true;
+  elements.domLimitControls.hidden = true;
+  elements.saveDomLimitButton.hidden = true;
+  elements.resetDomLimitButton.hidden = true;
+  elements.donePreviewButton.hidden = false;
+  elements.refreshPreviewButton.hidden = true;
+  if (!elements.contextPreviewDialog.open) {
+    elements.contextPreviewDialog.showModal();
+  }
+}
+
+function openSkillPreview(skill) {
+  if (!skill) return;
+  previewMode = "skill";
+  domConfigurationScope = null;
+  elements.previewTitle.textContent = `${skill.name} skill`;
+  elements.previewDescription.textContent =
+    "These are the instructions included in the effective system prompt when this skill is used.";
+  elements.contextPreviewContent.textContent = skill.instructions || "This skill has no instructions.";
+  elements.previewStats.textContent = skill.description || "No description";
   elements.domModeControls.hidden = true;
   elements.domLimitControls.hidden = true;
   elements.saveDomLimitButton.hidden = true;
@@ -2669,6 +3098,7 @@ async function runToolCallingLoop(
         status: "running",
         arguments: call?.function?.arguments || {}
       };
+      activity.unsupported = !BrowserChatTools.hasTool(activity.name);
       toolActivities.push(activity);
       onToolCallStart?.({ ...activity });
 
@@ -2798,17 +3228,19 @@ async function submitPrompt(prompt) {
   conversationModel = selectedModel;
   const thinkingEnabled = elements.thinkingSelect.value === "on";
   const includeDomContext = domContextEnabled;
+  const requestedSkillId = explicitSkillId;
+  const composerAttachmentOrder = getComposerAttachmentOrder();
   const contextAttachment = includeDomContext
     ? { context: null, memorized: true }
     : null;
   setError("");
   setDomContextEnabled(false);
+  setExplicitSkill(null);
   setPromptText();
   resizeInput();
   appendMessage("user", prompt, { forceScroll: true });
   const assistantUI = appendAssistantMessage({
     thinkingEnabled,
-    contextAttachment,
     modelSwitching
   });
 
@@ -2830,7 +3262,26 @@ async function submitPrompt(prompt) {
     if (contextAttachment && page) {
       rememberDomAttachment(contextAttachment, page);
     }
-    const messages = buildOllamaMessages(prompt, page);
+    const selectedSkills = await selectSkillsForPrompt(
+      prompt,
+      controller.signal,
+      requestedSkillId
+    );
+    const skillActivities = selectedSkills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      instructions: skill.instructions,
+      selectionSource: skill.id === requestedSkillId ? "explicit" : "automatic"
+    }));
+    assistantUI.showSkills(skillActivities);
+    assistantUI.addAttachments({
+      order: composerAttachmentOrder,
+      contextAttachment,
+      skills: selectedSkills,
+      requestedSkillId
+    });
+    const messages = buildOllamaMessages(prompt, page, selectedSkills);
     const answer = await runToolCallingLoop(messages, controller.signal, {
       answerNowSignal: answerNowController.signal,
       onThinking: (thinking) => {
@@ -2906,7 +3357,8 @@ async function submitPrompt(prompt) {
         ...(answer.thinking ? { thinking: answer.thinking } : {}),
         ...(answer.toolActivities?.length
           ? { toolActivities: answer.toolActivities }
-          : {})
+          : {}),
+        ...(skillActivities.length ? { skillActivities } : {})
       }
     );
     const chat = chats.find((item) => item.id === chatId);
@@ -2958,8 +3410,13 @@ elements.input.addEventListener("input", () => {
   if (domContextEnabled && !elements.input.contains(elements.contextChip)) {
     setDomContextEnabled(false);
   }
+  if (explicitSkillId && !elements.input.contains(elements.skillChip)) {
+    explicitSkillId = null;
+    elements.skillChip.hidden = true;
+  }
   saveCaretRange();
   resizeInput();
+  renderSkillPicker();
   updateSendButton();
 });
 
@@ -2974,16 +3431,60 @@ elements.contextChipMenu.addEventListener("pointerenter", openContextChipMenu);
 elements.contextChipMenu.addEventListener("pointerleave", scheduleContextChipMenuClose);
 elements.contextChipMenu.addEventListener("focusin", openContextChipMenu);
 elements.contextChipMenu.addEventListener("focusout", scheduleContextChipMenuClose);
-elements.input.addEventListener("scroll", positionContextChipMenu);
+elements.skillChip.addEventListener("pointerenter", openSkillChipMenu);
+elements.skillChip.addEventListener("pointerleave", scheduleSkillChipMenuClose);
+elements.skillChip.addEventListener("focusin", openSkillChipMenu);
+elements.skillChip.addEventListener("focusout", scheduleSkillChipMenuClose);
+elements.skillChipMenu.addEventListener("pointerenter", openSkillChipMenu);
+elements.skillChipMenu.addEventListener("pointerleave", scheduleSkillChipMenuClose);
+elements.skillChipMenu.addEventListener("focusin", openSkillChipMenu);
+elements.skillChipMenu.addEventListener("focusout", scheduleSkillChipMenuClose);
+elements.input.addEventListener("scroll", () => {
+  positionContextChipMenu();
+  positionSkillChipMenu();
+});
 elements.conversation.addEventListener("scroll", updateConversationAutoScroll, {
   passive: true
 });
-window.addEventListener("resize", positionContextChipMenu);
+window.addEventListener("resize", () => {
+  positionContextChipMenu();
+  positionSkillChipMenu();
+});
 document.addEventListener("selectionchange", () => {
   if (document.activeElement === elements.input) saveCaretRange();
 });
 
 elements.input.addEventListener("keydown", (event) => {
+  if (!elements.skillPicker.hidden) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      skillPickerActiveIndex =
+        (skillPickerActiveIndex + direction + skillPickerMatches.length) %
+        Math.max(1, skillPickerMatches.length);
+      renderSkillPicker();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey && skillPickerMatches.length) {
+      event.preventDefault();
+      chooseActiveSkill();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSkillPicker();
+      return;
+    }
+  }
+  if (
+    event.key === "Backspace" &&
+    explicitSkillId &&
+    isCaretImmediatelyAfterChip(elements.skillChip)
+  ) {
+    event.preventDefault();
+    setExplicitSkill(null);
+    return;
+  }
   if (
     event.key === "Backspace" &&
     !getPromptText().trim() &&
@@ -2997,6 +3498,34 @@ elements.input.addEventListener("keydown", (event) => {
     event.preventDefault();
     elements.form.requestSubmit();
   }
+});
+
+elements.skillPickerList.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+});
+elements.skillPickerList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-skill-picker-id]");
+  if (button) {
+    setExplicitSkill(button.dataset.skillPickerId, { removeSlashQuery: true });
+    elements.input.focus();
+  }
+});
+elements.removeSkillButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setExplicitSkill(null);
+  elements.input.focus();
+});
+elements.skillChipPreviewButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const skill = availableSkills.find((item) => item.id === explicitSkillId);
+  openSkillPreview(skill);
+});
+elements.skillChipConfigureButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openSkillsSettings();
 });
 
 elements.modelSelect.addEventListener("change", async () => {
@@ -3076,6 +3605,12 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".tool-picker")) setToolMenu(false);
   if (!event.target.closest(".chat-picker")) setChatMenu(false);
   if (!event.target.closest(".chat-menu-row")) closeChatActionMenus();
+  if (
+    !event.target.closest(".skill-picker-popover") &&
+    !event.target.closest("#promptInput")
+  ) {
+    closeSkillPicker();
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.toolMenu.hidden) {
@@ -3085,6 +3620,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.chatMenu.hidden) {
     setChatMenu(false);
     elements.chatPickerButton.focus();
+  }
+  if (event.key === "Escape" && !elements.skillPicker.hidden) {
+    closeSkillPicker();
+    elements.input.focus();
   }
 });
 elements.refreshPreviewButton.addEventListener("click", refreshContextPreview);
@@ -3189,10 +3728,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (settingsChange) {
     userPromptSettings = BrowserChatPromptConfig.normalizePromptSettings(settingsChange.newValue);
   }
+  if (
+    changes[BrowserChatSkills.STORAGE_KEY] ||
+    changes[BrowserChatSkills.ENABLED_STORAGE_KEY]
+  ) {
+    void loadSkills();
+  }
 });
 
 async function initializeApp() {
-  await Promise.all([initializeChats(), loadSystemPrompt()]);
+  await Promise.all([initializeChats(), loadSystemPrompt(), loadSkills()]);
   await Promise.all([loadModels(), refreshSiteAccess()]);
   elements.input.focus();
 }

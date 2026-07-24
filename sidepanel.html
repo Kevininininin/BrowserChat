@@ -80,6 +80,11 @@
           <button id="allowSiteButton" class="allow-site-button" type="button" disabled>Allow</button>
         </div>
         <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+        <div id="skillPicker" class="skill-picker-popover" role="listbox" aria-label="Available skills" hidden>
+          <div class="skill-picker-heading">Skills</div>
+          <div id="skillPickerList" class="skill-picker-list"></div>
+          <div id="skillPickerEmpty" class="skill-picker-empty" hidden>No matching skills</div>
+        </div>
         <form id="chatForm" class="composer">
           <div class="composer-input">
             <div
@@ -91,6 +96,18 @@
               aria-label="Message BrowserChat"
               data-placeholder="Ask anything"
             ></div>
+            <div id="skillChip" class="skill-chip" contenteditable="false" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/>
+                <path d="m5 7 7 4 7-4M12 11v10"/>
+              </svg>
+              <span id="skillChipLabel">Skill</span>
+              <div id="skillChipMenu" class="chip-menu" role="menu" aria-label="Skill options">
+                <button id="skillChipPreviewButton" type="button" role="menuitem">Preview</button>
+                <button id="skillChipConfigureButton" type="button" role="menuitem">Configure</button>
+                <button id="removeSkillButton" class="chip-menu-destructive" type="button" role="menuitem">Remove</button>
+              </div>
+            </div>
             <div id="contextChip" class="context-chip" contenteditable="false" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9"/>
@@ -236,6 +253,8 @@
     </dialog>
 
     <script src="config/system-prompt.js"></script>
+    <script src="skills/registry.js"></script>
+    <script src="skills/defaults/mermaid.js"></script>
     <script src="tools/registry.js"></script>
     <script src="tools/calculator.js"></script>
     <script src="tools/active-tab.js"></script>

@@ -20,10 +20,10 @@
       "If the requested information is not present, say so plainly.",
     toolInstruction:
       "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. Request independent tool calls together in the same round so they can run in parallel; keep calls sequential when one needs another call's result.",
+    skillInstruction:
+      "Skills are prompt instructions that have already been applied to this response. They are not tools or functions. Follow any attached skill instructions directly, and never request a tool named skill or use a skill name as a tool call.",
     markdownInstruction:
       "Format answers in Markdown. Use headings, short paragraphs, bullets, links, tables, and fenced code blocks when they improve readability.",
-    mermaidInstruction:
-      "When a diagram would make a workflow, hierarchy, sequence, or relationship materially clearer, you may return a fenced mermaid code block using documented Mermaid 11 syntax. For flowcharts, use standard arrows such as --> and labeled edges such as A -- label --> B or A -->|label| B. Use only documented Mermaid arrow tokens. Let BrowserChat provide diagram styling instead of adding style, classDef, theme, or init directives. Do not use Mermaid for simple prose or ordinary code.",
     pageContextOpen: "<page_context>",
     pageContextClose: "</page_context>",
     userQuestionOpen: "<user_question>",
@@ -59,8 +59,8 @@
       prompts.visualLimitsInstruction,
       prompts.missingInformationInstruction,
       prompts.toolInstruction,
-      prompts.markdownInstruction,
-      prompts.mermaidInstruction
+      prompts.skillInstruction,
+      prompts.markdownInstruction
     ].filter(Boolean).join(" ");
   }
 
