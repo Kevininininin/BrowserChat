@@ -2152,6 +2152,7 @@ select {
 
 .image-preview-dialog {
   display: grid;
+  position: relative;
   width: min(94vw, 1100px);
   max-width: 94vw;
   max-height: 94vh;

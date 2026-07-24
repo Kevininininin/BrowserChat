@@ -4102,7 +4102,10 @@ function openImagePreview(image) {
   if (!image?.src) return;
   elements.imagePreview.src = image.src;
   elements.imagePreview.alt = image.dataset.previewName || "Expanded attachment preview";
-  elements.imagePreviewDialog.showModal();
+  if (!elements.imagePreviewDialog.open) elements.imagePreviewDialog.showModal();
+}
+function closeImagePreview() {
+  if (elements.imagePreviewDialog.open) elements.imagePreviewDialog.close();
 }
 elements.conversation.addEventListener("click", (event) => {
   const image = event.target.closest("[data-preview-image]");
@@ -4114,11 +4117,24 @@ elements.conversation.addEventListener("keydown", (event) => {
     openImagePreview(event.target);
   }
 });
-elements.closeImagePreviewButton.addEventListener("click", () => {
-  elements.imagePreviewDialog.close();
+elements.closeImagePreviewButton.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  closeImagePreview();
 });
-elements.imagePreviewDialog.addEventListener("click", (event) => {
-  if (event.target === elements.imagePreviewDialog) elements.imagePreviewDialog.close();
+elements.imagePreviewDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeImagePreview();
+});
+elements.imagePreviewDialog.addEventListener("pointerdown", (event) => {
+  if (event.target !== elements.imagePreviewDialog) return;
+  const bounds = elements.imagePreviewDialog.getBoundingClientRect();
+  const clickedBackdrop =
+    event.clientX < bounds.left || event.clientX > bounds.right ||
+    event.clientY < bounds.top || event.clientY > bounds.bottom;
+  if (clickedBackdrop) closeImagePreview();
+});
+elements.imagePreviewDialog.addEventListener("close", () => {
+  elements.imagePreview.removeAttribute("src");
 });
 
 elements.newChatButton.addEventListener("click", () => void startNewChat());
