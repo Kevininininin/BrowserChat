@@ -949,6 +949,22 @@ h1 {
 }
 
 .skill-card-actions { display: flex; gap: 6px; }
+.skill-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 2px;
+  color: #62615c;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.skill-row-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: #6b4fa0;
+}
+.skill-row-toggle b { min-width: 42px; }
 .skill-card-actions button {
   padding: 7px 9px;
   color: #555550;

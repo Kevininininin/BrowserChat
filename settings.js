@@ -999,6 +999,13 @@ function renderSkills() {
         <p>${escapeHtml(skill.description || "No description")}</p>
       </div>
       <div class="skill-card-actions">
+        <label class="skill-row-toggle">
+          <input type="checkbox" data-toggle-skill="${escapeHtml(skill.id)}" ${
+            skill.enabled !== false ? "checked" : ""
+          } />
+          <span aria-hidden="true"></span>
+          <b>${skill.enabled !== false ? "Enabled" : "Disabled"}</b>
+        </label>
         <button type="button" data-export-skill="${escapeHtml(skill.id)}">Export .md</button>
         <button type="button" data-edit-skill="${escapeHtml(skill.id)}">Edit</button>
         ${
@@ -1152,6 +1159,24 @@ skillElements.list.addEventListener("click", async (event) => {
   skillElements.importStatus.textContent = skill.overridesPackaged
     ? `Reset “${skill.name}” to its packaged Markdown.`
     : `Deleted “${skill.name}”.`;
+});
+skillElements.list.addEventListener("change", async (event) => {
+  const toggle = event.target.closest("[data-toggle-skill]");
+  if (!toggle) return;
+  toggle.disabled = true;
+  try {
+    await BrowserChatSkills.setSkillEnabled(
+      toggle.dataset.toggleSkill,
+      toggle.checked
+    );
+    const skill = skills.find((item) => item.id === toggle.dataset.toggleSkill);
+    if (skill) skill.enabled = toggle.checked;
+    renderSkills();
+  } catch (error) {
+    toggle.checked = !toggle.checked;
+    skillElements.importStatus.textContent =
+      error instanceof Error ? error.message : String(error);
+  }
 });
 skillElements.form.addEventListener("submit", async (event) => {
   event.preventDefault();

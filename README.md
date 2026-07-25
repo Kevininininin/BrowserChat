@@ -123,6 +123,9 @@ objective-scoped tool calls, and an ordered `executionTimeline` of planned-item
 starts, tool calls, post-tool thinking, planned-item evaluations, and terminal
 planned-item states. It also includes retrieved sources, attachment metadata,
 and the separate final response.
+If a run is stopped from the composer, BrowserChat preserves the partial
+response and execution state, marks the trace with a `stopped` finish reason,
+and keeps its JSON download action available after the chat is reloaded.
 
 ## Skills
 

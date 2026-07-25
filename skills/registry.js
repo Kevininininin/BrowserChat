@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEY = "browserChatSkills";
   const ENABLED_STORAGE_KEY = "browserChatSkillsEnabled";
+  const DISABLED_SKILL_IDS_STORAGE_KEY = "browserChatDisabledSkillIds";
   const defaults = [];
   const previewStorageValues = {};
   const previewStorage = {
@@ -49,7 +50,8 @@
         typeof value.sourcePath === "string" ? value.sourcePath : "",
       overridesPackaged: Boolean(value.overridesPackaged),
       createdAt: Number.isFinite(value.createdAt) ? value.createdAt : Date.now(),
-      updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now()
+      updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
+      enabled: value.enabled !== false
     };
   }
 
@@ -173,7 +175,11 @@
   async function load(storage = null) {
     storage = resolveStorage(storage);
     const [stored, packagedSkills] = await Promise.all([
-      storage.get([STORAGE_KEY, ENABLED_STORAGE_KEY]),
+      storage.get([
+        STORAGE_KEY,
+        ENABLED_STORAGE_KEY,
+        DISABLED_SKILL_IDS_STORAGE_KEY
+      ]),
       loadPackagedSkills()
     ]);
     const hasStoredSkills = Object.prototype.hasOwnProperty.call(stored, STORAGE_KEY);
@@ -185,6 +191,11 @@
     const localById = new Map(localSkills.map((skill) => [skill.id, skill]));
     const packagedNames = new Set(
       packagedSkills.map((skill) => skill.name.toLocaleLowerCase())
+    );
+    const disabledSkillIds = new Set(
+      Array.isArray(stored[DISABLED_SKILL_IDS_STORAGE_KEY])
+        ? stored[DISABLED_SKILL_IDS_STORAGE_KEY].filter((id) => typeof id === "string")
+        : []
     );
     const skills = [
       ...packagedSkills.map((skill) => {
@@ -202,7 +213,10 @@
           !packagedSkills.some((packaged) => packaged.id === skill.id) &&
           !packagedNames.has(skill.name.toLocaleLowerCase())
       )
-    ];
+    ].map((skill) => ({
+      ...skill,
+      enabled: !disabledSkillIds.has(skill.id)
+    }));
     const enabled = stored[ENABLED_STORAGE_KEY] !== false;
 
     if (!hasStoredSkills) {
@@ -231,6 +245,24 @@
     const normalized = Boolean(enabled);
     await storage.set({ [ENABLED_STORAGE_KEY]: normalized });
     return normalized;
+  }
+
+  async function setSkillEnabled(skillId, enabled, storage = null) {
+    storage = resolveStorage(storage);
+    const id = String(skillId || "").trim();
+    if (!id) throw new Error("A skill id is required.");
+    const stored = await storage.get([DISABLED_SKILL_IDS_STORAGE_KEY]);
+    const disabled = new Set(
+      Array.isArray(stored[DISABLED_SKILL_IDS_STORAGE_KEY])
+        ? stored[DISABLED_SKILL_IDS_STORAGE_KEY]
+        : []
+    );
+    if (enabled) disabled.delete(id);
+    else disabled.add(id);
+    await storage.set({
+      [DISABLED_SKILL_IDS_STORAGE_KEY]: [...disabled]
+    });
+    return Boolean(enabled);
   }
 
   function buildSelectionMessages(prompt, skills) {
@@ -280,6 +312,7 @@
   globalThis.BrowserChatSkills = Object.freeze({
     STORAGE_KEY,
     ENABLED_STORAGE_KEY,
+    DISABLED_SKILL_IDS_STORAGE_KEY,
     registerDefault,
     normalizeSkill,
     parseMarkdown,
@@ -288,6 +321,7 @@
     load,
     saveSkills,
     setEnabled,
+    setSkillEnabled,
     buildSelectionMessages,
     parseSelection,
     composeSystemPrompt

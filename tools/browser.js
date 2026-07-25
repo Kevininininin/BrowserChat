@@ -15,6 +15,36 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "find_and_click",
+        description:
+          "Search the live DOM for a visible interactive control by its known label and click it without capturing or serializing the page. Prefer exact labels. The tool refuses ambiguous matches.",
+        parameters: {
+          type: "object",
+          required: ["query"],
+          properties: {
+            query: {
+              type: "string",
+              description: "The exact visible or accessible label of the control to click."
+            },
+            match: {
+              type: "string",
+              enum: ["exact", "contains"],
+              description: "Match mode. Defaults to exact."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().findAndClick(arguments_, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "get_current_website",
         description:
           "Return the URL and tab title of the website currently active in the browser. Use this to re-check where you are operating without capturing the page.",

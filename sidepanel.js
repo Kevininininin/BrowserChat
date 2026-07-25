@@ -462,7 +462,7 @@ async function loadSystemPrompt() {
 async function loadSkills() {
   const state = await BrowserChatSkills.load();
   skillsEnabled = state.enabled;
-  availableSkills = state.skills;
+  availableSkills = state.skills.filter((skill) => skill.enabled !== false);
   if (
     explicitSkillIds.some(
       (skillId) => !skillsEnabled || !availableSkills.some((skill) => skill.id === skillId)
@@ -594,7 +594,9 @@ function renderCurrentConversation() {
       model: message.model,
       pageUrl: message.pageUrl,
       responseId: message.responseId,
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+      finishReason: message.finishReason,
+      stoppedAt: message.stoppedAt
     });
   }
 }
@@ -1694,6 +1696,11 @@ function getToolActivityCopy(toolName, status) {
       completed: "Found interactive elements",
       failed: "Interactive element search failed"
     },
+    find_and_click: {
+      running: "Finding and clicking control…",
+      completed: "Found and clicked control",
+      failed: "Control search or click failed"
+    },
     fill_field: {
       running: "Filling field…",
       completed: "Filled field",
@@ -2089,7 +2096,11 @@ function buildResponseTrace(content, options = {}) {
     retrievedSources: options.sourceReferences || [],
     response: {
       hasFinalOutput: Boolean(String(content || "").trim()),
-      finalOutput: content || ""
+      finalOutput: content || "",
+      finishReason: options.finishReason || "completed",
+      ...(options.stoppedAt
+        ? { stoppedAt: new Date(options.stoppedAt).toISOString() }
+        : {})
     }
   };
 }
@@ -3777,6 +3788,97 @@ async function findInteractiveElementsForAgent(
   };
 }
 
+async function findAndClickForAgent(
+  { query, match = "exact" } = {},
+  { signal } = {}
+) {
+  signal?.throwIfAborted();
+  const target = String(query || "").replace(/\s+/g, " ").trim();
+  if (!target) throw new Error("A control label query is required.");
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id) throw new Error("BrowserChat could not identify the active tab.");
+  const beforeUrl = tab.url || "";
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    args: [{ target, match }],
+    func: ({ target, match }) => {
+      const normalize = (value) =>
+        String(value ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+      const isVisible = (element) => {
+        if (!(element instanceof Element)) return false;
+        if (element.closest("[hidden], [aria-hidden='true']")) return false;
+        const style = getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden" &&
+          Number.parseFloat(style.opacity || "1") > 0 &&
+          element.getClientRects().length > 0;
+      };
+      const selector = [
+        "a[href]", "button", "input[type='button']", "input[type='submit']",
+        "[role='button']", "[role='link']", "[role='menuitem']", "[role='tab']"
+      ].join(",");
+      const labelFor = (element) => {
+        const labelledBy = element.getAttribute("aria-labelledby");
+        const labelledText = labelledBy
+          ? labelledBy.split(/\s+/)
+              .map((id) => document.getElementById(id)?.textContent || "")
+              .join(" ")
+          : "";
+        return [
+          element.getAttribute("aria-label"),
+          labelledText,
+          element.getAttribute("title"),
+          element instanceof HTMLInputElement ? element.value : "",
+          element.innerText,
+          element.textContent
+        ].map((value) => String(value || "").replace(/\s+/g, " ").trim())
+          .find(Boolean) || "";
+      };
+      const needle = normalize(target);
+      const candidates = Array.from(new Set(document.querySelectorAll(selector)))
+        .filter(isVisible)
+        .map((element) => ({ element, label: labelFor(element) }))
+        .filter(({ element, label }) => {
+          if (element.matches(":disabled") || element.getAttribute("aria-disabled") === "true") {
+            return false;
+          }
+          const normalized = normalize(label);
+          return match === "contains"
+            ? normalized.includes(needle)
+            : normalized === needle;
+        });
+      if (candidates.length !== 1) {
+        return {
+          clicked: false,
+          matches: candidates.slice(0, 8).map(({ label }) => label),
+          error: candidates.length
+            ? "The label matched more than one visible control."
+            : "No visible interactive control matched the label."
+        };
+      }
+      const { element, label } = candidates[0];
+      element.scrollIntoView({ block: "center", inline: "center" });
+      element.click();
+      return { clicked: true, query: target, match, label };
+    }
+  });
+  if (!result?.clicked) {
+    throw new Error(
+      `${result?.error || "The control could not be clicked"}${
+        result?.matches?.length ? ` Matches: ${result.matches.join(", ")}` : ""
+      }`
+    );
+  }
+  const navigation = await waitForAgentUrlChange(tab.id, beforeUrl, signal, 2500);
+  clearAgentObservation();
+  return {
+    ...result,
+    beforeUrl,
+    afterUrl: navigation.url || beforeUrl,
+    navigationDetected: navigation.changed,
+    requiresObservation: false
+  };
+}
+
 async function searchCapturedPageTextForAgent({ query } = {}, { signal } = {}) {
   signal?.throwIfAborted();
   const focusedQuery = String(query || "").trim();
@@ -4320,6 +4422,7 @@ globalThis.BrowserChatAgentRuntime = Object.freeze({
     };
   },
   observe: observePageForAgent,
+  findAndClick: findAndClickForAgent,
   findInteractiveElements: findInteractiveElementsForAgent,
   searchCapturedPageText: searchCapturedPageTextForAgent,
   fillField: (arguments_, context) =>
@@ -4707,6 +4810,8 @@ function isMeaningfulToolProgress(activity) {
       return payload.changedSincePreviousObservation !== false;
     case "find_interactive_elements":
       return Array.isArray(payload.matches) && payload.matches.length > 0;
+    case "find_and_click":
+      return Boolean(payload.clicked);
     case "click_element":
       return payload.effect && payload.effect !== "none-detected";
     case "fill_field":
@@ -4754,7 +4859,8 @@ function evaluateObjectiveProgress(plan, activity) {
     "fill_field",
     "select_option",
     "scroll_page",
-    "find_interactive_elements"
+    "find_interactive_elements",
+    "find_and_click"
   ]);
   if (activity.name === "observe_page") {
     if (isMeaningfulToolProgress(activity)) objective.noProgressCount = 0;
@@ -5204,6 +5310,13 @@ function summarizeAgentToolActivity(activity) {
       summary.matches = Array.isArray(payload.matches)
         ? payload.matches.slice(0, 4)
         : [];
+      break;
+    case "find_and_click":
+      summary.query = payload.query;
+      summary.clicked = payload.clicked;
+      summary.label = payload.label;
+      summary.navigationDetected = payload.navigationDetected;
+      summary.afterUrl = payload.afterUrl;
       break;
     case "fill_field":
       summary.verified = payload.verified;
@@ -5751,6 +5864,15 @@ async function submitPrompt(prompt) {
   });
   activeRequest = controller;
   let objectivePlan = null;
+  let retrieval = { chunks: [], sources: [], context: "" };
+  let skillActivities = [];
+  const partialResponse = {
+    content: "",
+    thinking: "",
+    initialThinking: "",
+    toolActivities: new Map(),
+    stepEvaluations: []
+  };
   updateSendButton();
 
   try {
@@ -5794,7 +5916,7 @@ async function submitPrompt(prompt) {
           Array.from({ length: attachment.chunkCount }, (_, index) => index)
         ])
     );
-    const retrieval = ragEnabled
+    retrieval = ragEnabled
       ? await BrowserChatRag.retrieve(chatId, prompt, {
           signal: controller.signal,
           selectedChunks
@@ -5805,7 +5927,7 @@ async function submitPrompt(prompt) {
       controller.signal,
       requestedSkillIds
     );
-    const skillActivities = selectedSkills.map((skill) => ({
+    skillActivities = selectedSkills.map((skill) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
@@ -5865,6 +5987,11 @@ async function submitPrompt(prompt) {
     const answer = await runToolCallingLoop(messages, controller.signal, {
       answerNowSignal: answerNowController.signal,
       onThinking: (thinking, { roundThinking = thinking, activity = null } = {}) => {
+        partialResponse.thinking = thinking;
+        if (!activity) partialResponse.initialThinking = roundThinking;
+        if (activity?.id) {
+          partialResponse.toolActivities.set(activity.id, { ...activity });
+        }
         assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
         if (activity) {
@@ -5893,6 +6020,7 @@ async function submitPrompt(prompt) {
         scrollToLatest();
       },
       onContent: (text) => {
+        partialResponse.content = text;
         assistantUI.processingStatus.hidden = true;
         assistantUI.toolUI.panel.open = false;
         if (!assistantUI.answerStarted) {
@@ -5913,6 +6041,16 @@ async function submitPrompt(prompt) {
         scrollToLatest();
       },
       onStepContent: (evaluation) => {
+        const evaluationIndex = partialResponse.stepEvaluations.findIndex(
+          (item) =>
+            item.objectiveId === evaluation.objectiveId &&
+            item.objectiveSequence === evaluation.objectiveSequence
+        );
+        if (evaluationIndex >= 0) {
+          partialResponse.stepEvaluations[evaluationIndex] = { ...evaluation };
+        } else {
+          partialResponse.stepEvaluations.push({ ...evaluation });
+        }
         assistantUI.processingStatus.hidden = true;
         assistantUI.toolUI.panel.hidden = false;
         assistantUI.toolUI.panel.open = true;
@@ -5920,6 +6058,9 @@ async function submitPrompt(prompt) {
         scrollToLatest();
       },
       onToolCallStart: (activity) => {
+        if (activity?.id) {
+          partialResponse.toolActivities.set(activity.id, { ...activity });
+        }
         assistantUI.processingStatus.hidden = true;
         if (assistantUI.hasThinking && !assistantUI.toolUI.activities.size) {
           assistantUI.thinkingPanel.classList.remove("streaming");
@@ -5933,6 +6074,9 @@ async function submitPrompt(prompt) {
         scrollToLatest();
       },
       onToolCallFinish: (activity) => {
+        if (activity?.id) {
+          partialResponse.toolActivities.set(activity.id, { ...activity });
+        }
         renderToolActivity(assistantUI.toolUI, activity);
         scrollToLatest();
       },
@@ -6054,9 +6198,79 @@ async function submitPrompt(prompt) {
     if (error.name === "AbortError") {
       assistantUI.thinkingSummary.textContent = "Thinking stopped";
       assistantUI.thinkingPanel.open = false;
-      assistantUI.message.textContent =
-        assistantUI.message.textContent.replace(/Thinking…|Reading this page…/, "").trim() ||
-        "Response stopped.";
+      const stoppedAt = Date.now();
+      const partialContent =
+        partialResponse.content ||
+        assistantUI.message.textContent
+          .replace(/Thinking…|Reading this page…/, "")
+          .trim();
+      if (partialContent) {
+        renderMarkdown(assistantUI.message, partialContent);
+      } else {
+        assistantUI.message.textContent = "Response stopped.";
+      }
+      const toolActivities = [...partialResponse.toolActivities.values()];
+      const stepEvaluations = partialResponse.stepEvaluations.map(
+        ({ streaming, ...evaluation }) => evaluation
+      );
+      const assistantRecord = {
+        role: "assistant",
+        responseId: crypto.randomUUID(),
+        createdAt: stoppedAt,
+        model: selectedModel,
+        pageUrl: currentSite.pageUrl || null,
+        content: partialContent,
+        finishReason: "stopped",
+        stoppedAt,
+        ...(partialResponse.thinking
+          ? { thinking: partialResponse.thinking }
+          : {}),
+        ...(partialResponse.initialThinking
+          ? { initialThinking: partialResponse.initialThinking }
+          : {}),
+        ...(toolActivities.length ? { toolActivities } : {}),
+        ...(stepEvaluations.length ? { stepEvaluations } : {}),
+        ...(objectivePlan ? { objectivePlan } : {}),
+        ...(skillActivities.length ? { skillActivities } : {}),
+        ...(retrieval.sources.length
+          ? { sourceReferences: retrieval.sources }
+          : {})
+      };
+      assistantRecord.executionTimeline = buildExecutionTimeline({
+        objectivePlan,
+        initialThinking: partialResponse.initialThinking,
+        toolActivities,
+        stepEvaluations
+      });
+      assistantUI.setDownloadTrace(
+        buildResponseTrace(partialContent, {
+          ...assistantRecord,
+          triggeringPrompt: prompt,
+          attachments: submittedAttachmentRefs
+        })
+      );
+      chatHistory.push(
+        {
+          role: "user",
+          createdAt: stoppedAt,
+          content: prompt,
+          ...(submittedAttachmentRefs.length
+            ? {
+                attachments: submittedAttachmentRefs.map(
+                  ({ previewUrl, ...attachment }) => attachment
+                )
+              }
+            : {})
+        },
+        assistantRecord
+      );
+      const chat = chats.find((item) => item.id === chatId);
+      if (chat) {
+        chat.conversationModel = selectedModel;
+        chat.updatedAt = stoppedAt;
+        await persistChats();
+        renderChatMenu();
+      }
     } else {
       if (!assistantUI.hasThinking) {
         assistantUI.thinkingPanel.hidden = true;
