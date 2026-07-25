@@ -4618,6 +4618,21 @@ function getBrowserControlAction(activity = {}) {
   }
 }
 
+function getBrowserControlNextStep(thinking = "") {
+  const cleaned = String(thinking || "")
+    .replace(/<[^>]+>|[`*_#]/g, " ")
+    .replace(/\b(?:find_and_click|observe_page|click_element|scroll_page|fill_field|press_key)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "Preparing the next step";
+  const explicitNext = cleaned.match(
+    /(?:^|[.!?]\s+|\d+\.\s*)next(?:,|\s)+(?:i (?:need|should|will|want) to\s+)?([\s\S]+)/i
+  )?.[1];
+  return (explicitNext || cleaned)
+    .replace(/^(?:then\s+|i (?:need|should|will|want) to\s+)/i, "")
+    .trim();
+}
+
 async function updateBrowserControlIndicator(
   activity,
   thinking = "",
@@ -4633,9 +4648,9 @@ async function updateBrowserControlIndicator(
       target: { tabId: tab.id },
       args: [
         actionOverride || getBrowserControlAction(activity),
-        String(thinking || "").replace(/\s+/g, " ").trim().slice(-220)
+        getBrowserControlNextStep(thinking)
       ],
-      func: (action, thinking) => {
+      func: (action, nextStep) => {
         const rootId = "__browserchat_control_indicator";
         let root = document.getElementById(rootId);
         if (!root) {
@@ -4648,38 +4663,40 @@ async function updateBrowserControlIndicator(
               :host { all: initial; }
               .shade { position: fixed; inset: 0; z-index: 2147483644; pointer-events: none;
                 background:
-                  radial-gradient(circle at 50% 42%, rgba(179,205,226,.06), rgba(103,145,179,.13) 72%),
-                  linear-gradient(180deg, rgba(126,163,193,.08), rgba(74,112,145,.18));
+                  radial-gradient(circle at 50% 42%, rgba(100,177,224,.08), rgba(43,124,179,.16) 72%),
+                  linear-gradient(180deg, rgba(63,151,207,.1), rgba(25,93,143,.21));
                 opacity: 0; animation: bc-fade-in 180ms ease forwards; }
               .cursor { position: fixed; left: 50vw; top: 50vh; z-index: 2147483647;
-                width: 22px; height: 28px; pointer-events: none;
+                width: 25px; height: 27px; pointer-events: none;
                 transition: left 520ms cubic-bezier(.22,.8,.25,1), top 520ms cubic-bezier(.22,.8,.25,1);
-                filter: drop-shadow(0 2px 4px rgba(29,53,72,.24)); }
-              .pointer { width: 19px; height: 24px; background: #6f9fbd; clip-path:
-                polygon(0 0, 0 88%, 27% 66%, 45% 100%, 60% 91%, 42% 59%, 76% 58%);
-                box-shadow: inset 0 0 0 1px rgba(244,250,253,.95); }
-              .bubble { position: absolute; left: 20px; top: 19px; width: max-content;
-                box-sizing: border-box; max-width: min(310px, calc(100vw - 70px)); min-width: 190px;
-                padding: 10px; border: 1px solid rgba(94,132,158,.28);
-                border-radius: 6px 15px 15px 15px; color: #1f303c;
-                background: rgba(247,250,251,.96); box-shadow:
-                  0 10px 30px rgba(34,61,79,.14), 0 2px 8px rgba(34,61,79,.08);
+                filter: drop-shadow(0 2px 3px rgba(0,0,0,.34)); }
+              .pointer { display: block; width: 24px; height: 24px; overflow: visible; }
+              .status-stack { position: absolute; left: 22px; top: 18px; width: max-content;
+                max-width: min(290px, calc(100vw - 70px)); }
+              .bubble { box-sizing: border-box; width: max-content; max-width: 100%; min-width: 170px;
+                padding: 10px 12px; border: 1px solid rgba(0,0,0,.2);
+                border-radius: 6px 15px 15px 15px; color: #202020;
+                background: rgba(255,255,255,.97); box-shadow:
+                  0 10px 30px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.1);
                 font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
                 overflow-wrap: anywhere; backdrop-filter: blur(10px); }
-              .action { display: flex; align-items: center; gap: 7px; color: #365d75;
-                font: 650 11px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+              .action { display: flex; align-items: center; gap: 8px; color: #252525;
+                font: 650 12px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
                 letter-spacing: .01em; }
               .action::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto;
-                border-radius: 50%; background: #82aec8; box-shadow: 0 0 0 3px #dceaf2;
+                border-radius: 50%; background: #555; box-shadow: 0 0 0 3px #e3e3e3;
                 animation: bc-thinking 900ms ease-in-out infinite alternate; }
-              .thought { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(94,132,158,.16);
-                color: #52636e; font: 400 12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-              .thought:empty { display: none; }
-              .cursor.edge-right .bubble { left: auto; right: 20px; border-radius: 13px 5px 13px 13px; }
-              .cursor.edge-bottom .bubble { top: auto; bottom: 20px; }
-              .cursor.clicking .pointer { animation: bc-click 330ms ease; }
+              .next { max-width: 270px; margin: 6px 8px 0; color: #fff;
+                font: 500 11px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+                white-space: normal; overflow-wrap: anywhere;
+                text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 2px 5px rgba(0,0,0,.78); }
+              .cursor.edge-right .status-stack { left: auto; right: 22px; }
+              .cursor.edge-right .bubble { margin-left: auto; border-radius: 15px 6px 15px 15px; }
+              .cursor.edge-right .next { margin-left: auto; text-align: right; }
+              .cursor.edge-bottom .status-stack { top: auto; bottom: 20px; }
+              .cursor.clicking .pointer { animation: bc-click 330ms ease; transform-origin: 3px 3px; }
               .cursor.clicking::after { content: ""; position: absolute; left: 5px; top: 7px;
-                width: 10px; height: 10px; border: 2px solid #76a6c3; border-radius: 50%;
+                width: 10px; height: 10px; border: 2px solid #111; border-radius: 50%;
                 animation: bc-ring 380ms ease-out forwards; }
               @keyframes bc-fade-in { to { opacity: 1; } }
               @keyframes bc-thinking { to { opacity: .25; transform: scale(.72); } }
@@ -4691,19 +4708,26 @@ async function updateBrowserControlIndicator(
               }
             </style>
             <div class="shade"></div>
-            <div class="cursor"><div class="pointer"></div><div class="bubble">
-              <div class="action"></div><div class="thought"></div>
-            </div></div>`;
+            <div class="cursor">
+              <svg class="pointer" viewBox="-0.5 -0.5 16 16" aria-hidden="true">
+                <path fill="#fff" fill-rule="evenodd" clip-rule="evenodd"
+                  d="M13.2403125 5.168375c.9875625.401125.9121875 1.82375-.11225 2.1181875L7.958875 8.7725l-2.3609375 4.8326875c-.4679375.9576875-1.8820625.784875-2.1055625-.25725L1.0856875 2.1243125C.8968125 1.2435 1.7705.510375 2.6051875.8493125L13.2403125 5.168375Z"
+                  stroke="#111" stroke-width="1.25" stroke-linejoin="round"/>
+              </svg>
+              <div class="status-stack"><div class="bubble"><div class="action"></div></div>
+                <div class="next"></div>
+              </div>
+            </div>`;
           (document.documentElement || document.body).append(root);
           const cursorElement = shadow.querySelector(".cursor");
           const actionElement = shadow.querySelector(".action");
-          const thoughtElement = shadow.querySelector(".thought");
+          const nextElement = shadow.querySelector(".next");
           globalThis.__browserChatControlIndicator = {
             setAction(value) {
               actionElement.textContent = String(value || "Working on this page");
             },
-            setThinking(value) {
-              thoughtElement.textContent = String(value || "");
+            setNextStep(value) {
+              nextElement.textContent = String(value || "Preparing the next step");
             },
             async moveTo(x, y) {
               const safeX = Math.max(8, Math.min(innerWidth - 28, x));
@@ -4727,7 +4751,7 @@ async function updateBrowserControlIndicator(
           };
         }
         globalThis.__browserChatControlIndicator?.setAction(action);
-        globalThis.__browserChatControlIndicator?.setThinking(thinking);
+        globalThis.__browserChatControlIndicator?.setNextStep(nextStep);
       }
     });
   } catch {
@@ -6402,7 +6426,11 @@ async function submitPrompt(prompt) {
         if (!activity) partialResponse.initialThinking = roundThinking;
         if (activity?.id) {
           partialResponse.toolActivities.set(activity.id, { ...activity });
-          void updateBrowserControlIndicator(activity, roundThinking);
+          void updateBrowserControlIndicator(
+            activity,
+            roundThinking,
+            "Planning the next step"
+          );
         }
         assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
@@ -6495,7 +6523,7 @@ async function submitPrompt(prompt) {
         void updateBrowserControlIndicator(
           activity,
           partialResponse.thinking,
-          activity.status === "failed" ? "Browser action failed" : "Browser action complete"
+          activity.status === "failed" ? "Browser action failed" : "Reviewing the result"
         );
       },
       objectivePlan,
