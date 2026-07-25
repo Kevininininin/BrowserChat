@@ -2649,8 +2649,9 @@ select {
 }
 
 .model-chip select {
-  width: max-content;
+  width: auto;
   max-width: none;
+  field-sizing: content;
 }
 
 .thinking-chip select {

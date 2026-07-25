@@ -194,6 +194,22 @@ let currentSite = {
 let availableOllamaModels = new Set();
 let cloudPrivacyAccepted = false;
 let checkingCloudModel = false;
+const modelSelectMeasureCanvas = document.createElement("canvas");
+
+function sizeModelSelectToCurrentOption() {
+  const select = elements.modelSelect;
+  const label = select.options[select.selectedIndex]?.text || "";
+  if (!label) return;
+
+  const styles = getComputedStyle(select);
+  const context = modelSelectMeasureCanvas.getContext("2d");
+  context.font = `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+  const horizontalPadding =
+    Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
+  // Reserve room for Chromium's native select arrow and its inset without
+  // leaving excess space between the label and chevron.
+  select.style.width = `${Math.ceil(context.measureText(label).width + horizontalPadding + 22)}px`;
+}
 
 function isCloudModel(model = elements.modelSelect?.value || "") {
   return CLOUD_MODELS.includes(model);
@@ -3033,6 +3049,7 @@ async function loadModels() {
 
     const preferred = saved.selectedModel;
     elements.modelSelect.value = models.includes(preferred) ? preferred : models[0];
+    sizeModelSelectToCurrentOption();
     elements.thinkingSelect.value =
       saved.thinkingEnabled === false ? "off" : "on";
     setConnectionStatus("online", "Connected to Ollama");
@@ -7113,6 +7130,7 @@ elements.skillPickerList.addEventListener("click", (event) => {
 });
 
 elements.modelSelect.addEventListener("change", async () => {
+  sizeModelSelectToCurrentOption();
   await chrome.storage.local.set({ selectedModel: elements.modelSelect.value });
   setError("");
   if (isCloudModel() && isSelectedCloudModelReady() && cloudPrivacyAccepted) {
