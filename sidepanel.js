@@ -2250,30 +2250,71 @@ function downloadResponseTrace(trace) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function createResponseDownloadControl(initialTrace = null) {
+function downloadCursorTrace(trace) {
+  const exported = {
+    ...trace,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const slug = String(trace.chatTitle || "browserchat")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "browserchat";
+  link.href = url;
+  link.download = `${slug}-cursor-log-${Date.now()}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function createResponseDownloadControl(initialTrace = null, initialCursorTrace = null) {
   let trace = initialTrace;
+  let cursorTrace = initialCursorTrace;
   const wrap = document.createElement("div");
   wrap.className = "response-actions";
-  const button = document.createElement("button");
-  button.className = "response-download-button";
-  button.type = "button";
-  button.title = "Download response trace as JSON";
-  button.setAttribute("aria-label", "Download response trace as JSON");
-  button.innerHTML = `
+  const createButton = (label, title) => {
+    const button = document.createElement("button");
+    button.className = "response-download-button";
+    button.type = "button";
+    button.title = title;
+    button.innerHTML = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/>
-    </svg>
-  `;
-  button.hidden = !trace;
-  button.addEventListener("click", () => {
+    </svg><span>${label}</span>`;
+    return button;
+  };
+  const responseButton = createButton(
+    "Response log",
+    "Download the complete response trace as JSON"
+  );
+  const cursorButton = createButton(
+    "Cursor log",
+    "Download the on-page cursor display log as JSON"
+  );
+  responseButton.hidden = !trace;
+  cursorButton.hidden = !cursorTrace;
+  responseButton.addEventListener("click", () => {
     if (trace) downloadResponseTrace(trace);
   });
-  wrap.append(button);
+  cursorButton.addEventListener("click", () => {
+    if (cursorTrace) downloadCursorTrace(cursorTrace);
+  });
+  wrap.append(responseButton, cursorButton);
   return {
     wrap,
     setTrace(nextTrace) {
       trace = nextTrace;
-      button.hidden = !trace;
+      responseButton.hidden = !trace;
+    },
+    setCursorTrace(nextTrace) {
+      cursorTrace = nextTrace;
+      cursorButton.hidden = !cursorTrace;
     }
   };
 }
@@ -2359,7 +2400,8 @@ function appendMessage(role, content = "", options = {}) {
   contentWrap.append(message);
   if (role === "assistant") {
     const download = createResponseDownloadControl(
-      buildResponseTrace(content, options)
+      buildResponseTrace(content, options),
+      options.cursorDisplayLog || null
     );
     contentWrap.append(download.wrap);
   }
@@ -2675,6 +2717,7 @@ function appendAssistantMessage({
     thinkingContent,
     toolUI,
     setDownloadTrace: download.setTrace,
+    setCursorTrace: download.setCursorTrace,
     addAttachments: (attachments) => addReplyAttachments(attachmentArea, attachments),
     showSkills: (skills) => {
       skillUsageSlot.replaceChildren(
@@ -4633,24 +4676,62 @@ function getBrowserControlNextStep(thinking = "") {
     .trim();
 }
 
+let activeCursorDisplayRecorder = null;
+let cursorIndicatorUpdateSequence = 0;
+
+function createCursorDisplayRecorder({ chatTitle = "", prompt = "" } = {}) {
+  const events = [];
+  return {
+    record({ action, nextStep, activity } = {}) {
+      const event = {
+        sequence: events.length + 1,
+        displayedAt: new Date().toISOString(),
+        action: String(action || ""),
+        nextStep: String(nextStep || ""),
+        toolCallId: activity?.id || null,
+        tool: activity?.name || null,
+        toolStatus: activity?.status || null
+      };
+      const previous = events.at(-1);
+      if (
+        previous?.action === event.action &&
+        previous?.nextStep === event.nextStep &&
+        previous?.toolCallId === event.toolCallId
+      ) {
+        return;
+      }
+      events.push(event);
+    },
+    export() {
+      return {
+        schema: "browserchat.cursor-display-log.v1",
+        chatTitle,
+        prompt,
+        createdAt: events[0]?.displayedAt || new Date().toISOString(),
+        events: events.map((event) => ({ ...event }))
+      };
+    }
+  };
+}
+
 async function updateBrowserControlIndicator(
   activity,
   thinking = "",
   actionOverride = ""
 ) {
   if (!BROWSER_CONTROL_TOOL_NAMES.has(activity?.name)) return;
+  const action = actionOverride || getBrowserControlAction(activity);
+  const nextStep = getBrowserControlNextStep(thinking);
+  const updateSequence = ++cursorIndicatorUpdateSequence;
   let tab;
   try {
     [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     const site = getSiteDetails(tab);
     if (!tab?.id || site.restricted) return;
-    await chrome.scripting.executeScript({
+    const [{ result: applied }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      args: [
-        actionOverride || getBrowserControlAction(activity),
-        getBrowserControlNextStep(thinking)
-      ],
-      func: (action, nextStep) => {
+      args: [action, nextStep, updateSequence],
+      func: (action, nextStep, sequence) => {
         const rootId = "__browserchat_control_indicator";
         let root = document.getElementById(rootId);
         if (!root) {
@@ -4663,8 +4744,8 @@ async function updateBrowserControlIndicator(
               :host { all: initial; }
               .shade { position: fixed; inset: 0; z-index: 2147483644; pointer-events: none;
                 background:
-                  radial-gradient(circle at 50% 42%, rgba(100,177,224,.08), rgba(43,124,179,.16) 72%),
-                  linear-gradient(180deg, rgba(63,151,207,.1), rgba(25,93,143,.21));
+                  radial-gradient(circle at 50% 42%, rgba(75,155,205,.1), rgba(30,103,154,.2) 72%),
+                  linear-gradient(180deg, rgba(42,127,181,.13), rgba(16,72,113,.25));
                 opacity: 0; animation: bc-fade-in 180ms ease forwards; }
               .cursor { position: fixed; left: 50vw; top: 50vh; z-index: 2147483647;
                 width: 25px; height: 27px; pointer-events: none;
@@ -4672,7 +4753,7 @@ async function updateBrowserControlIndicator(
                 filter: drop-shadow(0 2px 3px rgba(0,0,0,.34)); }
               .pointer { display: block; width: 24px; height: 24px; overflow: visible; }
               .status-stack { position: absolute; left: 22px; top: 18px; width: max-content;
-                max-width: min(290px, calc(100vw - 70px)); }
+                max-width: min(340px, calc(100vw - 70px)); }
               .bubble { box-sizing: border-box; width: max-content; max-width: 100%; min-width: 170px;
                 padding: 10px 12px; border: 1px solid rgba(0,0,0,.2);
                 border-radius: 6px 15px 15px 15px; color: #202020;
@@ -4686,10 +4767,9 @@ async function updateBrowserControlIndicator(
               .action::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto;
                 border-radius: 50%; background: #555; box-shadow: 0 0 0 3px #e3e3e3;
                 animation: bc-thinking 900ms ease-in-out infinite alternate; }
-              .next { max-width: 270px; margin: 6px 8px 0; color: #fff;
+              .next { max-width: 320px; margin: 6px 8px 0; color: #fff;
                 font: 500 11px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-                white-space: normal; overflow-wrap: anywhere;
-                text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 2px 5px rgba(0,0,0,.78); }
+                white-space: normal; overflow-wrap: anywhere; }
               .cursor.edge-right .status-stack { left: auto; right: 22px; }
               .cursor.edge-right .bubble { margin-left: auto; border-radius: 15px 6px 15px 15px; }
               .cursor.edge-right .next { margin-left: auto; text-align: right; }
@@ -4723,6 +4803,7 @@ async function updateBrowserControlIndicator(
           const actionElement = shadow.querySelector(".action");
           const nextElement = shadow.querySelector(".next");
           globalThis.__browserChatControlIndicator = {
+            lastSequence: 0,
             setAction(value) {
               actionElement.textContent = String(value || "Working on this page");
             },
@@ -4732,7 +4813,7 @@ async function updateBrowserControlIndicator(
             async moveTo(x, y) {
               const safeX = Math.max(8, Math.min(innerWidth - 28, x));
               const safeY = Math.max(8, Math.min(innerHeight - 36, y));
-              cursorElement.classList.toggle("edge-right", safeX > innerWidth - 310);
+              cursorElement.classList.toggle("edge-right", safeX > innerWidth - 360);
               cursorElement.classList.toggle("edge-bottom", safeY > innerHeight - 100);
               cursorElement.style.left = `${safeX}px`;
               cursorElement.style.top = `${safeY}px`;
@@ -4750,10 +4831,17 @@ async function updateBrowserControlIndicator(
             }
           };
         }
-        globalThis.__browserChatControlIndicator?.setAction(action);
-        globalThis.__browserChatControlIndicator?.setNextStep(nextStep);
+        const indicator = globalThis.__browserChatControlIndicator;
+        if (!indicator || sequence < indicator.lastSequence) return false;
+        indicator.lastSequence = sequence;
+        indicator.setAction(action);
+        indicator.setNextStep(nextStep);
+        return true;
       }
     });
+    if (applied) {
+      activeCursorDisplayRecorder?.record({ action, nextStep, activity });
+    }
   } catch {
     // The active page may navigate while the status is being painted.
   }
@@ -6305,9 +6393,15 @@ async function submitPrompt(prompt) {
     content: "",
     thinking: "",
     initialThinking: "",
+    cursorLatestThinking: "",
     toolActivities: new Map(),
     stepEvaluations: []
   };
+  const cursorDisplayRecorder = createCursorDisplayRecorder({
+    chatTitle: taskChat?.title || DEFAULT_CHAT_TITLE,
+    prompt
+  });
+  activeCursorDisplayRecorder = cursorDisplayRecorder;
   updateSendButton();
 
   try {
@@ -6423,6 +6517,7 @@ async function submitPrompt(prompt) {
       answerNowSignal: answerNowController.signal,
       onThinking: (thinking, { roundThinking = thinking, activity = null } = {}) => {
         partialResponse.thinking = thinking;
+        if (roundThinking) partialResponse.cursorLatestThinking = roundThinking;
         if (!activity) partialResponse.initialThinking = roundThinking;
         if (activity?.id) {
           partialResponse.toolActivities.set(activity.id, { ...activity });
@@ -6512,7 +6607,10 @@ async function submitPrompt(prompt) {
         assistantUI.toolUI.panel.open = true;
         renderToolActivity(assistantUI.toolUI, activity);
         scrollToLatest();
-        await updateBrowserControlIndicator(activity, partialResponse.thinking);
+        await updateBrowserControlIndicator(
+          activity,
+          partialResponse.cursorLatestThinking
+        );
       },
       onToolCallFinish: (activity) => {
         if (activity?.id) {
@@ -6522,7 +6620,7 @@ async function submitPrompt(prompt) {
         scrollToLatest();
         void updateBrowserControlIndicator(
           activity,
-          partialResponse.thinking,
+          partialResponse.cursorLatestThinking,
           activity.status === "failed" ? "Browser action failed" : "Reviewing the result"
         );
       },
@@ -6567,6 +6665,7 @@ async function submitPrompt(prompt) {
 
     assistantUI.message.classList.remove("pending");
     const responseCreatedAt = Date.now();
+    const cursorDisplayLog = cursorDisplayRecorder.export();
     const assistantRecord = {
       role: "assistant",
       responseId: crypto.randomUUID(),
@@ -6587,6 +6686,7 @@ async function submitPrompt(prompt) {
       ...(answer.executionTimeline?.length
         ? { executionTimeline: answer.executionTimeline }
         : {}),
+      ...(cursorDisplayLog.events.length ? { cursorDisplayLog } : {}),
       ...(objectivePlan ? { objectivePlan } : {}),
       ...(skillActivities.length ? { skillActivities } : {}),
       ...(retrieval.sources.length
@@ -6598,6 +6698,9 @@ async function submitPrompt(prompt) {
       triggeringPrompt: prompt,
       attachments: submittedAttachmentRefs
     }));
+    assistantUI.setCursorTrace(
+      cursorDisplayLog.events.length ? cursorDisplayLog : null
+    );
     chatHistory.push(
       {
         role: "user",
@@ -6676,6 +6779,9 @@ async function submitPrompt(prompt) {
           : {}),
         ...(toolActivities.length ? { toolActivities } : {}),
         ...(stepEvaluations.length ? { stepEvaluations } : {}),
+        ...(cursorDisplayRecorder.export().events.length
+          ? { cursorDisplayLog: cursorDisplayRecorder.export() }
+          : {}),
         ...(objectivePlan ? { objectivePlan } : {}),
         ...(skillActivities.length ? { skillActivities } : {}),
         ...(retrieval.sources.length
@@ -6695,6 +6801,7 @@ async function submitPrompt(prompt) {
           attachments: submittedAttachmentRefs
         })
       );
+      assistantUI.setCursorTrace(assistantRecord.cursorDisplayLog || null);
       chatHistory.push(
         {
           role: "user",
@@ -6726,6 +6833,9 @@ async function submitPrompt(prompt) {
     }
   } finally {
     await removeBrowserControlIndicator();
+    if (activeCursorDisplayRecorder === cursorDisplayRecorder) {
+      activeCursorDisplayRecorder = null;
+    }
     activeRequest = null;
     updateSendButton();
     elements.input.focus();
