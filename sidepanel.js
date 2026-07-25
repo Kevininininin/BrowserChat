@@ -3578,6 +3578,15 @@ const agentObservationState = {
   ragObservationId: null
 };
 
+function invalidateAgentObservation() {
+  agentObservationState.observationId = null;
+  agentObservationState.tabId = null;
+  agentObservationState.url = "";
+  agentObservationState.elements = new Map();
+  agentObservationState.page = null;
+  agentObservationState.stateSignature = "";
+}
+
 function getAgentElementFingerprint(element) {
   return {
     index: element.index,
@@ -3798,6 +3807,11 @@ async function findAndClickForAgent(
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) throw new Error("BrowserChat could not identify the active tab.");
   const beforeUrl = tab.url || "";
+  const beforeTabIds = new Set(
+    (await chrome.tabs.query({ windowId: tab.windowId }))
+      .map((candidate) => candidate.id)
+      .filter(Number.isInteger)
+  );
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     args: [{ target, match }],
@@ -3834,31 +3848,53 @@ async function findAndClickForAgent(
           .find(Boolean) || "";
       };
       const needle = normalize(target);
-      const candidates = Array.from(new Set(document.querySelectorAll(selector)))
+      const controls = Array.from(new Set(document.querySelectorAll(selector)))
         .filter(isVisible)
         .map((element) => ({ element, label: labelFor(element) }))
-        .filter(({ element, label }) => {
-          if (element.matches(":disabled") || element.getAttribute("aria-disabled") === "true") {
-            return false;
-          }
+        .filter(({ element, label }) =>
+          Boolean(label) &&
+          !element.matches(":disabled") &&
+          element.getAttribute("aria-disabled") !== "true"
+        );
+      const candidates = controls
+        .filter(({ label }) => {
           const normalized = normalize(label);
           return match === "contains"
             ? normalized.includes(needle)
             : normalized === needle;
         });
       if (candidates.length !== 1) {
+        const terms = needle.split(/[^a-z0-9]+/).filter((term) => term.length > 1);
+        const suggestions = controls
+          .map(({ label }) => {
+            const normalized = normalize(label);
+            const score =
+              (normalized.includes(needle) || needle.includes(normalized) ? 20 : 0) +
+              terms.reduce(
+                (total, term) => total + (normalized.includes(term) ? 5 : 0),
+                0
+              );
+            return { label, score };
+          })
+          .filter(({ score }) => score > 0)
+          .sort((left, right) => right.score - left.score)
+          .slice(0, 8)
+          .map(({ label }) => label);
         return {
           clicked: false,
-          matches: candidates.slice(0, 8).map(({ label }) => label),
+          matches: candidates.length
+            ? candidates.slice(0, 8).map(({ label }) => label)
+            : suggestions,
           error: candidates.length
             ? "The label matched more than one visible control."
             : "No visible interactive control matched the label."
         };
       }
       const { element, label } = candidates[0];
+      const href = element instanceof HTMLAnchorElement ? element.href : "";
       element.scrollIntoView({ block: "center", inline: "center" });
       element.click();
-      return { clicked: true, query: target, match, label };
+      return { clicked: true, query: target, match, label, href };
     }
   });
   if (!result?.clicked) {
@@ -3868,13 +3904,47 @@ async function findAndClickForAgent(
       }`
     );
   }
-  const navigation = await waitForAgentUrlChange(tab.id, beforeUrl, signal, 2500);
-  clearAgentObservation();
+  await waitWithSignal(250, signal);
+  let newTabs = (await chrome.tabs.query({ windowId: tab.windowId }))
+    .filter((candidate) => !beforeTabIds.has(candidate.id));
+  const navigation = newTabs.length
+    ? { changed: true, url: beforeUrl }
+    : await waitForAgentUrlChange(
+        tab.id,
+        beforeUrl,
+        signal,
+        result.href ? 4000 : 150
+      );
+  if (newTabs.length) {
+    const openedTab = newTabs.find((candidate) => candidate.active) ||
+      newTabs[newTabs.length - 1];
+    const deadline = Date.now() + 4000;
+    let settledTab = openedTab;
+    while (settledTab?.id && Date.now() < deadline) {
+      signal?.throwIfAborted();
+      settledTab = await chrome.tabs.get(settledTab.id);
+      if (settledTab.status === "complete" && settledTab.url) break;
+      await waitWithSignal(100, signal);
+    }
+    newTabs = newTabs.map((candidate) =>
+      candidate.id === settledTab?.id ? settledTab : candidate
+    );
+  }
+  invalidateAgentObservation();
+  const activeNewTab = newTabs.find((candidate) => candidate.active) ||
+    newTabs[newTabs.length - 1];
   return {
     ...result,
     beforeUrl,
-    afterUrl: navigation.url || beforeUrl,
-    navigationDetected: navigation.changed,
+    afterUrl: activeNewTab?.url || navigation.url || beforeUrl,
+    navigationDetected: navigation.changed || newTabs.length > 0,
+    newTabDetected: newTabs.length > 0,
+    newTabs: newTabs.map((candidate) => ({
+      tabId: candidate.id,
+      url: candidate.url || "",
+      title: candidate.title || "",
+      active: Boolean(candidate.active)
+    })),
     requiresObservation: false
   };
 }
@@ -4216,6 +4286,33 @@ async function performAgentElementAction(
     }
   });
   signal?.throwIfAborted();
+  if (!result && action === "fill") {
+    await waitWithSignal(500, signal);
+    const postFillObservation = await observePageForAgent({ signal, objective });
+    const expected = normalizeElementSearchText(payload.text);
+    const pageEvidence = normalizeElementSearchText([
+      postFillObservation.visibleText?.inViewport,
+      postFillObservation.visibleText?.elsewhereOnPage,
+      ...(postFillObservation.interactiveElements || []).map((element) =>
+        [element.label, element.name, element.placeholder].filter(Boolean).join(" ")
+      )
+    ].filter(Boolean).join(" "));
+    const verifiedFromPageUpdate = Boolean(expected && pageEvidence.includes(expected));
+    return {
+      action: "fill_field",
+      elementRef,
+      verified: verifiedFromPageUpdate,
+      verifiedFromPageUpdate,
+      enteredCharacterCount: String(payload.text ?? "").length,
+      submitted: payload.submit === true,
+      observationId: postFillObservation.observationId,
+      requiresObservation: false,
+      postSubmitObservation: postFillObservation,
+      nextStep: verifiedFromPageUpdate
+        ? "The page updated with the requested text even though the original field was replaced before direct verification. Use postSubmitObservation; do not repeat the fill or observe again."
+        : "The field was replaced before direct verification. Inspect postSubmitObservation and choose a different recovery action; do not repeat blindly."
+    };
+  }
   if (!result) throw new Error("The browser action returned no result.");
 
   if (action === "fill" && result.submitted) {
@@ -5316,6 +5413,8 @@ function summarizeAgentToolActivity(activity) {
       summary.clicked = payload.clicked;
       summary.label = payload.label;
       summary.navigationDetected = payload.navigationDetected;
+      summary.newTabDetected = payload.newTabDetected;
+      summary.newTabs = payload.newTabs;
       summary.afterUrl = payload.afterUrl;
       break;
     case "fill_field":

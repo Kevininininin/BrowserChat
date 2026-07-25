@@ -17,7 +17,7 @@ BrowserChatTools.define((register) => {
       function: {
         name: "find_and_click",
         description:
-          "Search the live DOM for a visible interactive control by its known label and click it without capturing or serializing the page. Prefer exact labels. The tool refuses ambiguous matches.",
+          "Search the live DOM for a visible interactive control by its known label and click it without capturing or serializing the page. Prefer exact labels. The tool refuses ambiguous matches and suggests related labels when possible.",
         parameters: {
           type: "object",
           required: ["query"],

@@ -11,22 +11,25 @@ Open the Analytics page for the YouTube video named by the user, then stop. Do n
 # Required tool strategy
 
 - Start with `get_current_website`.
-- For known controls, call `find_and_click` with the exact label. This searches and clicks the live DOM without a page capture.
+- For known controls, call `find_and_click` with the exact label. This searches and clicks the live DOM without a page capture. If it fails, use any suggested labels in the error instead of repeating the same query.
 - Do not call `observe_page` to find **View your channel**, **Manage videos**, or **Analytics**. Their labels are already known.
-- Perform exactly one `observe_page` after the video list is visible in YouTube Studio. Use that observation only to identify the available video titles and obtain the requested video's element reference.
+- After entering YouTube Studio, verify `get_current_website` reports `studio.youtube.com` before reading the video list. `Manage videos` may open a new tab; do not inspect or act on the old channel tab.
+- Perform one `observe_page` after the Studio video list is visible. Use its returned controls directly. Do not call `scroll_page`; Studio uses a long virtualized list and scrolling performs another expensive observation.
+- If the requested video is absent from the returned controls, fill the observed `Filter` field with `fill_field` and `submit: true`. Filter by the shortest distinctive literal term likely present in the real title (for example `UF`), not the user's entire paraphrase (`UF dorm tour`). Use `postSubmitObservation` from the fill result instead of observing again.
 - Click the requested video with `click_element`.
-- Avoid screenshots, repeated observations, `search_captured_page_text`, and broad DOM reads. Use a recovery observation only if a known-label click fails and the failure cannot be resolved with `get_current_website`.
+- Avoid screenshots, repeated observations, `search_captured_page_text`, and broad DOM reads. Never repeat the same failed `find_and_click` call. Use a recovery observation only if its suggested labels and `get_current_website` cannot resolve the failure.
 - Never guess between similar video titles. If the one observation shows no unique match, report the available close matches and ask the user which one they mean.
 
 # Navigation
 
-1. If the current page is the YouTube homepage, call `find_and_click` with the user's profile control label if they supplied it; otherwise use exact query `Account`.
+1. If the current page is the YouTube homepage, call `find_and_click` with exact query `Account menu`. This is the profile-picture button in the top-right header.
 2. Call `find_and_click` with exact query `View your channel`.
-3. On the channel page, call `find_and_click` with exact query `Manage videos`.
-4. When YouTube Studio's video list is ready, call `observe_page` once.
-5. Match the user-supplied video title against the observed controls. Prefer an exact title match; accept a unique, obvious normalized match only when punctuation or whitespace differs.
-6. Call `click_element` with that video's element reference.
-7. Call `find_and_click` with exact query `Analytics`.
-8. Confirm the current website is the selected video's Analytics page, then stop.
+3. On the channel page, call `find_and_click` with exact query `Manage videos`. If a popup was blocked, wait for the user to allow it, then call `get_current_website`; retry `Manage videos` only when still on the public channel page.
+4. Confirm the active URL is on `studio.youtube.com`, then call `observe_page` once.
+5. Match the user request semantically against video-title links whose destinations look like `/video/<id>/edit`. Ignore the channel-level sidebar `Analytics` item.
+6. If no likely title is present because the list was truncated or virtualized, filter using the observed `Filter` field as described above, then match against `postSubmitObservation`.
+7. Call `click_element` with the unique matching video-title link's element reference.
+8. On that video's details page, call `find_and_click` with exact query `Analytics`.
+9. Confirm the URL identifies the selected video's Analytics page, then stop.
 
 If starting later in the flow, continue from the applicable step instead of navigating backward.
