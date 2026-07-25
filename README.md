@@ -108,21 +108,21 @@ On each message, BrowserChat:
 7. Shows a separate, persisted skill-usage panel with each selected skill,
    whether it was selected automatically or explicitly, and the exact
    instructions injected into the prompt.
-8. Runs a multi-turn tool calling loop. A separate live activity panel shows
-   when each tool starts, its exact requested name, inputs, completion state,
-   and result. Requests for names outside the registered tool catalog are
-   labeled as unsupported tool requests. Tool results are added to the
-   conversation and sent back to Ollama until the model returns a final
-   response. Initial reasoning appears before the first tool, while reasoning
-   from later model rounds streams beneath the tool call that produced the
-   evidence for that round. These timeline segments persist with the chat.
+8. Runs a multi-turn tool calling loop. The live activity panel groups each
+   tool, its result, follow-up thinking, and end-of-step evaluation beneath the
+   planned item that owned the work. Intermediate model prose stays in that
+   planned-item timeline instead of appearing as a premature final answer.
+   Requests for names outside the registered tool catalog are labeled as
+   unsupported tool requests. These timeline segments persist with the chat.
 9. Streams Ollama's separate thinking and answer fields into the side panel.
 
 Each assistant reply includes a small download action that exports a versioned
-JSON response trace. The trace contains the triggering prompt, model, selected
-skills and injected instructions, initial and combined reasoning, ordered tool
-calls with arguments, results, status, and post-tool reasoning, retrieved
-sources, attachments metadata, and the final response.
+JSON response trace. The v2 trace contains the triggering prompt, model,
+selected skills and injected instructions, initial and combined reasoning,
+objective-scoped tool calls, and an ordered `executionTimeline` of planned-item
+starts, tool calls, post-tool thinking, planned-item evaluations, and terminal
+planned-item states. It also includes retrieved sources, attachment metadata,
+and the separate final response.
 
 ## Skills
 

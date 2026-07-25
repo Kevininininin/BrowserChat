@@ -998,6 +998,83 @@ select {
   gap: 8px;
 }
 
+.tool-objective-group {
+  overflow: hidden;
+  background: rgb(255 255 255 / 45%);
+  border: 1px solid #ddddd8;
+  border-radius: 10px;
+}
+
+.tool-objective-heading {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 9px;
+  gap: 7px;
+  color: #444440;
+  background: rgb(255 255 255 / 58%);
+  border-bottom: 1px solid #e5e5e0;
+}
+
+.tool-objective-heading strong {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tool-objective-sequence {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  color: #5e6f82;
+  font-size: 9px;
+  font-weight: 750;
+  background: #e8eff6;
+  border-radius: 999px;
+}
+
+.tool-objective-activities {
+  display: grid;
+  padding: 8px;
+  gap: 8px;
+}
+
+.tool-objective-evaluation {
+  margin: 0 8px 8px;
+  padding: 8px 9px;
+  background: #f7f7f4;
+  border-left: 3px solid #7292b4;
+  border-radius: 7px;
+}
+
+.tool-objective-evaluation[hidden] {
+  display: none;
+}
+
+.tool-objective-evaluation > summary {
+  color: #596775;
+  font-size: 10px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tool-objective-evaluation > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-objective-evaluation.streaming > summary {
+  animation: thinkingPulse 1.15s ease-in-out infinite;
+}
+
+.tool-objective-evaluation-content {
+  max-height: 220px;
+  margin-top: 7px;
+  overflow: auto;
+  color: #5d5d58;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .tool-activity-actions {
   padding: 0 11px 10px;
 }
@@ -1035,7 +1112,7 @@ select {
 
 .tool-activity-row {
   padding: 8px 9px;
-  background: rgb(255 255 255 / 62%);
+  background: rgb(255 255 255 / 75%);
   border: 1px solid #e2e2dd;
   border-radius: 9px;
 }

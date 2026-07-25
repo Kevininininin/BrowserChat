@@ -357,6 +357,24 @@ function getActiveObjective(plan) {
   return plan?.objectives?.find((objective) => objective.status === "active") || null;
 }
 
+function getObjectiveContext(plan, objective = getActiveObjective(plan)) {
+  if (!objective) {
+    return {
+      objectiveId: null,
+      objectiveDescription: "Unplanned execution",
+      objectiveSequence: null
+    };
+  }
+  const visibleObjectives = (plan?.objectives || []).filter(
+    (candidate) => candidate.status !== "revised"
+  );
+  return {
+    objectiveId: objective.id,
+    objectiveDescription: objective.description,
+    objectiveSequence: Math.max(1, visibleObjectives.indexOf(objective) + 1)
+  };
+}
+
 function renderObjectivePlan(plan = getActiveChat()?.objectivePlan) {
   const normalized = normalizeObjectivePlan(plan);
   elements.objectivePanel.hidden = !normalized;
@@ -561,6 +579,9 @@ function renderCurrentConversation() {
       : null;
     appendMessage(message.role, message.content, {
       toolActivities: message.toolActivities,
+      stepEvaluations: message.stepEvaluations,
+      executionTimeline: message.executionTimeline,
+      objectivePlan: message.objectivePlan,
       initialThinking: message.initialThinking,
       thinking: message.thinking,
       skillActivities: message.skillActivities,
@@ -1797,8 +1818,77 @@ function createToolActivityPanel() {
     list,
     actions,
     answerNowButton,
-    activities: new Map()
+    activities: new Map(),
+    objectiveGroups: new Map()
   };
+}
+
+function getToolObjectiveKey(activity = {}) {
+  return activity.objectiveId || "unplanned";
+}
+
+function ensureToolObjectiveGroup(toolUI, activity = {}) {
+  const key = getToolObjectiveKey(activity);
+  let group = toolUI.objectiveGroups.get(key);
+  if (group) return group;
+
+  const section = document.createElement("section");
+  section.className = "tool-objective-group";
+  section.dataset.objectiveId = key;
+
+  const heading = document.createElement("div");
+  heading.className = "tool-objective-heading";
+  const sequence = document.createElement("span");
+  sequence.className = "tool-objective-sequence";
+  sequence.textContent = activity.objectiveSequence
+    ? `Step ${activity.objectiveSequence}`
+    : "Task";
+  const description = document.createElement("strong");
+  description.textContent =
+    activity.objectiveDescription || "Unplanned tool activity";
+  heading.append(sequence, description);
+
+  const activities = document.createElement("div");
+  activities.className = "tool-objective-activities";
+
+  const evaluation = document.createElement("details");
+  evaluation.className = "tool-objective-evaluation";
+  evaluation.hidden = true;
+  const evaluationSummary = document.createElement("summary");
+  evaluationSummary.textContent = "Checking this planned item…";
+  const evaluationContent = document.createElement("div");
+  evaluationContent.className = "tool-objective-evaluation-content";
+  evaluation.append(evaluationSummary, evaluationContent);
+
+  section.append(heading, activities, evaluation);
+  toolUI.list.append(section);
+  group = {
+    key,
+    section,
+    heading,
+    description,
+    activities,
+    evaluation,
+    evaluationSummary,
+    evaluationContent
+  };
+  toolUI.objectiveGroups.set(key, group);
+  return group;
+}
+
+function renderObjectiveEvaluation(toolUI, evaluation = {}) {
+  if (!evaluation?.content) return;
+  const group = ensureToolObjectiveGroup(toolUI, evaluation);
+  group.evaluation.hidden = false;
+  group.evaluation.open = Boolean(evaluation.streaming);
+  group.evaluation.classList.toggle("streaming", Boolean(evaluation.streaming));
+  group.evaluationSummary.textContent = evaluation.streaming
+    ? "Checking this planned item…"
+    : evaluation.terminal
+    ? "Final evaluation for this planned item"
+    : "Evaluation after the latest tool";
+  group.evaluationContent.textContent = evaluation.content;
+  group.evaluationContent.scrollTop = group.evaluationContent.scrollHeight;
 }
 
 function updateToolActivitySummary(toolUI) {
@@ -1862,7 +1952,7 @@ function renderToolActivity(toolUI, activity) {
 
     header.append(indicator, label, toolName);
     row.append(header, details, thinking);
-    toolUI.list.append(row);
+    ensureToolObjectiveGroup(toolUI, activity).activities.append(row);
     activityUI = {
       ...activity,
       row,
@@ -1910,8 +2000,8 @@ function renderToolActivity(toolUI, activity) {
   updateToolActivitySummary(toolUI);
 }
 
-function appendStoredToolActivities(contentWrap, activities = []) {
-  if (!activities.length) return;
+function appendStoredToolActivities(contentWrap, activities = [], evaluations = []) {
+  if (!activities.length && !evaluations.length) return;
   const toolUI = createToolActivityPanel();
   contentWrap.append(toolUI.panel);
   for (const [index, activity] of activities.entries()) {
@@ -1923,7 +2013,16 @@ function appendStoredToolActivities(contentWrap, activities = []) {
       arguments: activity.arguments,
       result: activity.result,
       thinkingAfter: activity.thinkingAfter,
-      thinkingStreaming: false
+      thinkingStreaming: false,
+      objectiveId: activity.objectiveId,
+      objectiveDescription: activity.objectiveDescription,
+      objectiveSequence: activity.objectiveSequence
+    });
+  }
+  for (const evaluation of evaluations) {
+    renderObjectiveEvaluation(toolUI, {
+      ...evaluation,
+      streaming: false
     });
   }
 }
@@ -1945,7 +2044,7 @@ function appendStoredThinking(contentWrap, thinking, hasTools = false) {
 
 function buildResponseTrace(content, options = {}) {
   return {
-    schema: "browserchat.response-trace.v1",
+    schema: "browserchat.response-trace.v2",
     responseId: options.responseId || null,
     createdAt: options.createdAt
       ? new Date(options.createdAt).toISOString()
@@ -1972,15 +2071,20 @@ function buildResponseTrace(content, options = {}) {
       combined: options.thinking || ""
     },
     objectivePlan: options.objectivePlan || null,
+    executionTimeline: options.executionTimeline || [],
     toolCalls: (options.toolActivities || []).map((activity, index) => ({
       sequence: index + 1,
       id: activity.id || null,
+      objectiveId: activity.objectiveId || null,
+      objectiveDescription: activity.objectiveDescription || null,
+      objectiveSequence: activity.objectiveSequence || null,
       name: activity.name || "unknown",
       status: activity.status || "unknown",
       unsupported: Boolean(activity.unsupported),
       arguments: activity.arguments ?? {},
       result: activity.result ?? null,
-      thinkingAfter: activity.thinkingAfter || ""
+      thinkingAfter: activity.thinkingAfter || "",
+      evaluationAfter: activity.evaluationAfter || ""
     })),
     retrievedSources: options.sourceReferences || [],
     response: {
@@ -1988,6 +2092,104 @@ function buildResponseTrace(content, options = {}) {
       finalOutput: content || ""
     }
   };
+}
+
+function buildExecutionTimeline({
+  objectivePlan = null,
+  initialThinking = "",
+  toolActivities = [],
+  stepEvaluations = []
+} = {}) {
+  const events = [];
+  let sequence = 0;
+  let currentObjectiveId = null;
+  let hasCurrentObjective = false;
+  const push = (event) => events.push({ sequence: ++sequence, ...event });
+  const startObjective = (context = {}) => {
+    const objectiveId = context.objectiveId || null;
+    if (hasCurrentObjective && objectiveId === currentObjectiveId) return;
+    hasCurrentObjective = true;
+    currentObjectiveId = objectiveId;
+    push({
+      type: "planned_item_started",
+      objectiveId,
+      objectiveSequence: context.objectiveSequence || null,
+      objectiveDescription:
+        context.objectiveDescription || "Unplanned execution"
+    });
+  };
+
+  const firstContext =
+    toolActivities[0] ||
+    stepEvaluations[0] ||
+    getObjectiveContext(objectivePlan);
+  if (initialThinking) {
+    startObjective(firstContext);
+    push({
+      type: "thinking",
+      phase: "before_first_tool",
+      objectiveId: firstContext.objectiveId || null,
+      content: initialThinking
+    });
+  }
+
+  for (const activity of toolActivities) {
+    startObjective(activity);
+    push({
+      type: "tool_call",
+      objectiveId: activity.objectiveId || null,
+      objectiveSequence: activity.objectiveSequence || null,
+      toolCallId: activity.id || null,
+      tool: activity.name || "unknown",
+      status: activity.status || "unknown",
+      arguments: activity.arguments ?? {},
+      result: activity.result ?? null
+    });
+    if (activity.thinkingAfter) {
+      push({
+        type: "thinking",
+        phase: "after_tool",
+        objectiveId: activity.objectiveId || null,
+        toolCallId: activity.id || null,
+        content: activity.thinkingAfter
+      });
+    }
+    if (activity.evaluationAfter) {
+      push({
+        type: "planned_item_evaluation",
+        objectiveId: activity.objectiveId || null,
+        toolCallId: activity.id || null,
+        content: activity.evaluationAfter
+      });
+    }
+  }
+
+  for (const evaluation of stepEvaluations.filter(
+    (candidate) =>
+      !toolActivities.some(
+        (activity) => activity.evaluationAfter === candidate.content
+      )
+  )) {
+    startObjective(evaluation);
+    push({
+      type: "planned_item_evaluation",
+      objectiveId: evaluation.objectiveId || null,
+      terminal: Boolean(evaluation.terminal),
+      content: evaluation.content
+    });
+  }
+
+  for (const objective of objectivePlan?.objectives || []) {
+    if (!["completed", "blocked", "revised"].includes(objective.status)) continue;
+    push({
+      type: "planned_item_finished",
+      objectiveId: objective.id,
+      objectiveDescription: objective.description,
+      status: objective.status,
+      evidence: objective.evidence || null
+    });
+  }
+  return events;
 }
 
 function downloadResponseTrace(trace) {
@@ -2075,7 +2277,11 @@ function appendMessage(role, content = "", options = {}) {
       options.initialThinking,
       Boolean(options.toolActivities?.length)
     );
-    appendStoredToolActivities(contentWrap, options.toolActivities);
+    appendStoredToolActivities(
+      contentWrap,
+      options.toolActivities,
+      options.stepEvaluations
+    );
   }
 
   const message = document.createElement("div");
@@ -5033,6 +5239,7 @@ async function runToolCallingLoop(
     answerNowSignal,
     onThinking,
     onContent,
+    onStepContent,
     onToolCallStart,
     onToolCallFinish,
     objectivePlan = null,
@@ -5045,6 +5252,7 @@ async function runToolCallingLoop(
   let displayedContent = "";
   let objectiveStallCount = 0;
   const toolActivities = [];
+  const stepEvaluations = [];
   const baseMessages = messages.slice();
 
   const streamRoundThinking = (thinking) => {
@@ -5110,6 +5318,13 @@ async function runToolCallingLoop(
       thinking: combinedThinking,
       initialThinking,
       toolActivities,
+      stepEvaluations,
+      executionTimeline: buildExecutionTimeline({
+        objectivePlan,
+        initialThinking,
+        toolActivities,
+        stepEvaluations
+      }),
       objectivePlan
     };
   };
@@ -5129,10 +5344,12 @@ async function runToolCallingLoop(
       response = await streamChatRound(messages, roundController.signal, {
         onThinking: streamRoundThinking,
         onContent: (content, thinking) => {
-          onContent(
-            [displayedContent, content].filter(Boolean).join("\n\n"),
-            [combinedThinking, thinking].filter(Boolean).join("\n\n")
-          );
+          onStepContent?.({
+            ...(toolActivities.at(-1) || getObjectiveContext(objectivePlan)),
+            content,
+            thinking,
+            streaming: true
+          });
         }
       });
     } catch (error) {
@@ -5154,10 +5371,21 @@ async function runToolCallingLoop(
     combinedThinking = [combinedThinking, response.message.thinking]
       .filter(Boolean)
       .join("\n\n");
+    const evaluationContext =
+      toolActivities.at(-1) || getObjectiveContext(objectivePlan);
 
     if (!response.toolCalls.length) {
       const activeObjective = getActiveObjective(objectivePlan);
       if (activeObjective && objectiveStallCount < 1) {
+        if (response.message.content) {
+          const evaluation = {
+            ...evaluationContext,
+            content: response.message.content,
+            terminal: false
+          };
+          stepEvaluations.push(evaluation);
+          onStepContent?.({ ...evaluation, streaming: false });
+        }
         objectiveStallCount += 1;
         messages.push({
           role: "system",
@@ -5179,23 +5407,47 @@ async function runToolCallingLoop(
         objectivePlan.updatedAt = Date.now();
         onObjectivePlanChange?.(objectivePlan);
       }
-      displayedContent = [displayedContent, response.message.content]
-        .filter(Boolean)
-        .join("\n\n");
+      if (activeObjective && response.message.content) {
+        const evaluation = {
+          ...evaluationContext,
+          content: response.message.content,
+          terminal: true
+        };
+        stepEvaluations.push(evaluation);
+        onStepContent?.({ ...evaluation, streaming: false });
+      } else {
+        displayedContent = [displayedContent, response.message.content]
+          .filter(Boolean)
+          .join("\n\n");
+        onContent(displayedContent, combinedThinking);
+      }
       return {
         content: displayedContent,
         thinking: combinedThinking,
         initialThinking,
         toolActivities,
+        stepEvaluations,
+        executionTimeline: buildExecutionTimeline({
+          objectivePlan,
+          initialThinking,
+          toolActivities,
+          stepEvaluations
+        }),
         objectivePlan
       };
     }
     objectiveStallCount = 0;
 
     if (response.message.content) {
-      displayedContent = [displayedContent, response.message.content]
-        .filter(Boolean)
-        .join("\n\n");
+      const evaluation = {
+        ...evaluationContext,
+        content: response.message.content,
+        terminal: false
+      };
+      stepEvaluations.push(evaluation);
+      const owner = toolActivities.at(-1);
+      if (owner) owner.evaluationAfter = response.message.content;
+      onStepContent?.({ ...evaluation, streaming: false });
     }
 
     const results = [];
@@ -5210,7 +5462,8 @@ async function runToolCallingLoop(
         id: crypto.randomUUID(),
         name: call?.function?.name || "unknown",
         status: "running",
-        arguments: call?.function?.arguments || {}
+        arguments: call?.function?.arguments || {},
+        ...getObjectiveContext(objectivePlan)
       };
       activity.unsupported = !BrowserChatTools.hasTool(activity.name);
       toolActivities.push(activity);
@@ -5604,6 +5857,13 @@ async function submitPrompt(prompt) {
         assistantUI.message.classList.remove("pending");
         scrollToLatest();
       },
+      onStepContent: (evaluation) => {
+        assistantUI.processingStatus.hidden = true;
+        assistantUI.toolUI.panel.hidden = false;
+        assistantUI.toolUI.panel.open = true;
+        renderObjectiveEvaluation(assistantUI.toolUI, evaluation);
+        scrollToLatest();
+      },
       onToolCallStart: (activity) => {
         assistantUI.processingStatus.hidden = true;
         if (assistantUI.hasThinking && !assistantUI.toolUI.activities.size) {
@@ -5653,7 +5913,11 @@ async function submitPrompt(prompt) {
     }
 
     if (!answer.content.trim()) {
-      assistantUI.message.textContent = "Ollama returned an empty response.";
+      if (answer.stepEvaluations?.length) {
+        assistantUI.message.hidden = true;
+      } else {
+        assistantUI.message.textContent = "Ollama returned an empty response.";
+      }
     }
 
     assistantUI.message.classList.remove("pending");
@@ -5671,6 +5935,12 @@ async function submitPrompt(prompt) {
         : {}),
       ...(answer.toolActivities?.length
         ? { toolActivities: answer.toolActivities }
+        : {}),
+      ...(answer.stepEvaluations?.length
+        ? { stepEvaluations: answer.stepEvaluations }
+        : {}),
+      ...(answer.executionTimeline?.length
+        ? { executionTimeline: answer.executionTimeline }
         : {}),
       ...(objectivePlan ? { objectivePlan } : {}),
       ...(skillActivities.length ? { skillActivities } : {}),
