@@ -20,12 +20,7 @@
 
 ## Demo
 
-[![BrowserChat demo showing the Chrome side panel](docs/media/browserchat-side-panel.png)](docs/media/browserchat-demo.mp4)
-
-**[Watch the 46-second demo →](docs/media/browserchat-demo.mp4)**
-
-The compressed demo is about 3 MB. Click the preview or link above to open it
-directly from the repository.
+https://github.com/user-attachments/assets/233666ba-b0e1-4b6b-9ad6-5ab8b155e7d6
 
 ## What you can do
 
