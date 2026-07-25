@@ -113,7 +113,9 @@ On each message, BrowserChat:
    and result. Requests for names outside the registered tool catalog are
    labeled as unsupported tool requests. Tool results are added to the
    conversation and sent back to Ollama until the model returns a final
-   response.
+   response. Initial reasoning appears before the first tool, while reasoning
+   from later model rounds streams beneath the tool call that produced the
+   evidence for that round. These timeline segments persist with the chat.
 9. Streams Ollama's separate thinking and answer fields into the side panel.
 
 ## Skills

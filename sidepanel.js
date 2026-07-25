@@ -426,6 +426,7 @@ function renderCurrentConversation() {
   for (const message of chatHistory) {
     appendMessage(message.role, message.content, {
       toolActivities: message.toolActivities,
+      initialThinking: message.initialThinking,
       skillActivities: message.skillActivities,
       sourceReferences: message.sourceReferences,
       attachments: message.attachments
@@ -1695,10 +1696,28 @@ function renderToolActivity(toolUI, activity) {
     body.className = "tool-activity-body";
     details.append(detailsSummary, body);
 
+    const thinking = document.createElement("details");
+    thinking.className = "tool-step-thinking";
+    thinking.hidden = true;
+    const thinkingSummary = document.createElement("summary");
+    thinkingSummary.textContent = "Thinking after this tool…";
+    const thinkingContent = document.createElement("div");
+    thinkingContent.className = "tool-step-thinking-content";
+    thinking.append(thinkingSummary, thinkingContent);
+
     header.append(indicator, label, toolName);
-    row.append(header, details);
+    row.append(header, details, thinking);
     toolUI.list.append(row);
-    activityUI = { ...activity, row, label, toolName, body };
+    activityUI = {
+      ...activity,
+      row,
+      label,
+      toolName,
+      body,
+      thinking,
+      thinkingSummary,
+      thinkingContent
+    };
     toolUI.activities.set(activity.id, activityUI);
   }
 
@@ -1715,6 +1734,22 @@ function renderToolActivity(toolUI, activity) {
     sections.push(`Result\n${formatToolActivityValue(activity.result)}`);
   }
   activityUI.body.textContent = sections.join("\n\n");
+  if (activity.thinkingAfter) {
+    activityUI.thinking.hidden = false;
+    activityUI.thinking.open = Boolean(activity.thinkingStreaming);
+    activityUI.thinking.classList.toggle(
+      "streaming",
+      Boolean(activity.thinkingStreaming)
+    );
+    activityUI.thinkingSummary.textContent = activity.thinkingStreaming
+      ? "Thinking after this tool…"
+      : "Thought process after this tool";
+    activityUI.thinkingContent.textContent = activity.thinkingAfter;
+    activityUI.thinkingContent.scrollTop =
+      activityUI.thinkingContent.scrollHeight;
+  } else {
+    activityUI.thinking.hidden = true;
+  }
 
   toolUI.panel.hidden = false;
   updateToolActivitySummary(toolUI);
@@ -1731,9 +1766,26 @@ function appendStoredToolActivities(contentWrap, activities = []) {
       status: activity.status === "failed" ? "failed" : "completed",
       unsupported: Boolean(activity.unsupported),
       arguments: activity.arguments,
-      result: activity.result
+      result: activity.result,
+      thinkingAfter: activity.thinkingAfter,
+      thinkingStreaming: false
     });
   }
+}
+
+function appendStoredThinking(contentWrap, thinking, hasTools = false) {
+  if (!thinking) return;
+  const panel = document.createElement("details");
+  panel.className = "thinking-panel";
+  const summary = document.createElement("summary");
+  summary.textContent = hasTools
+    ? "Thought process before first tool"
+    : "Thought process";
+  const content = document.createElement("div");
+  content.className = "thinking-content";
+  content.textContent = thinking;
+  panel.append(summary, content);
+  contentWrap.append(panel);
 }
 
 function appendMessage(role, content = "", options = {}) {
@@ -1764,6 +1816,11 @@ function appendMessage(role, content = "", options = {}) {
     if (options.skillActivities?.length) {
       contentWrap.append(createSkillUsagePanel(options.skillActivities));
     }
+    appendStoredThinking(
+      contentWrap,
+      options.initialThinking,
+      Boolean(options.toolActivities?.length)
+    );
     appendStoredToolActivities(contentWrap, options.toolActivities);
   }
 
@@ -3953,9 +4010,34 @@ async function runToolCallingLoop(
   }
 ) {
   let combinedThinking = "";
+  let initialThinking = "";
   let displayedContent = "";
   const toolActivities = [];
   const baseMessages = messages.slice();
+
+  const streamRoundThinking = (thinking) => {
+    const owner = toolActivities.at(-1) || null;
+    if (owner) {
+      owner.thinkingAfter = thinking;
+      owner.thinkingStreaming = true;
+    } else {
+      initialThinking = thinking;
+    }
+    onThinking(
+      [combinedThinking, thinking].filter(Boolean).join("\n\n"),
+      {
+        roundThinking: thinking,
+        activity: owner ? { ...owner } : null
+      }
+    );
+  };
+
+  const finishRoundThinking = () => {
+    const owner = toolActivities.at(-1);
+    if (!owner?.thinkingAfter || !owner.thinkingStreaming) return;
+    owner.thinkingStreaming = false;
+    onToolCallFinish?.({ ...owner });
+  };
 
   const streamFinalAnswer = async () => {
     messages.push({
@@ -3966,9 +4048,7 @@ async function runToolCallingLoop(
 
     const response = await streamChatRound(messages, signal, {
       toolsEnabled: false,
-      onThinking: (thinking) => {
-        onThinking([combinedThinking, thinking].filter(Boolean).join("\n\n"));
-      },
+      onThinking: streamRoundThinking,
       onContent: (content, thinking) => {
         onContent(
           [displayedContent, content].filter(Boolean).join("\n\n"),
@@ -3976,6 +4056,7 @@ async function runToolCallingLoop(
         );
       }
     });
+    finishRoundThinking();
 
     messages.push(response.message);
     combinedThinking = [combinedThinking, response.message.thinking]
@@ -3988,6 +4069,7 @@ async function runToolCallingLoop(
     return {
       content: displayedContent,
       thinking: combinedThinking,
+      initialThinking,
       toolActivities
     };
   };
@@ -4005,9 +4087,7 @@ async function runToolCallingLoop(
     let response;
     try {
       response = await streamChatRound(messages, roundController.signal, {
-        onThinking: (thinking) => {
-          onThinking([combinedThinking, thinking].filter(Boolean).join("\n\n"));
-        },
+        onThinking: streamRoundThinking,
         onContent: (content, thinking) => {
           onContent(
             [displayedContent, content].filter(Boolean).join("\n\n"),
@@ -4029,6 +4109,7 @@ async function runToolCallingLoop(
       answerNowSignal?.removeEventListener("abort", cancelRound);
     }
 
+    finishRoundThinking();
     messages.push(response.message);
     combinedThinking = [combinedThinking, response.message.thinking]
       .filter(Boolean)
@@ -4041,6 +4122,7 @@ async function runToolCallingLoop(
       return {
         content: displayedContent,
         thinking: combinedThinking,
+        initialThinking,
         toolActivities
       };
     }
@@ -4334,9 +4416,20 @@ async function submitPrompt(prompt) {
     );
     const answer = await runToolCallingLoop(messages, controller.signal, {
       answerNowSignal: answerNowController.signal,
-      onThinking: (thinking) => {
+      onThinking: (thinking, { roundThinking = thinking, activity = null } = {}) => {
         assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
+        if (activity) {
+          assistantUI.toolUI.panel.hidden = false;
+          assistantUI.toolUI.panel.open = true;
+          renderToolActivity(assistantUI.toolUI, {
+            ...activity,
+            thinkingAfter: roundThinking,
+            thinkingStreaming: true
+          });
+          scrollToLatest();
+          return;
+        }
         assistantUI.thinkingPanel.hidden = false;
         if (!assistantUI.answerStarted) {
           assistantUI.thinkingPanel.open = true;
@@ -4346,7 +4439,7 @@ async function submitPrompt(prompt) {
           assistantUI.thinkingPanel.classList.remove("streaming");
           assistantUI.thinkingSummary.textContent = "Thought process";
         }
-        assistantUI.thinkingContent.textContent = thinking;
+        assistantUI.thinkingContent.textContent = roundThinking;
         assistantUI.thinkingContent.scrollTop =
           assistantUI.thinkingContent.scrollHeight;
         scrollToLatest();
@@ -4358,7 +4451,9 @@ async function submitPrompt(prompt) {
           assistantUI.answerStarted = true;
           assistantUI.thinkingPanel.classList.remove("streaming");
           if (assistantUI.hasThinking) {
-            assistantUI.thinkingSummary.textContent = "Thought process";
+            if (!assistantUI.toolUI.activities.size) {
+              assistantUI.thinkingSummary.textContent = "Thought process";
+            }
             assistantUI.thinkingPanel.open = false;
           } else {
             assistantUI.thinkingPanel.hidden = true;
@@ -4371,6 +4466,12 @@ async function submitPrompt(prompt) {
       },
       onToolCallStart: (activity) => {
         assistantUI.processingStatus.hidden = true;
+        if (assistantUI.hasThinking && !assistantUI.toolUI.activities.size) {
+          assistantUI.thinkingPanel.classList.remove("streaming");
+          assistantUI.thinkingPanel.open = false;
+          assistantUI.thinkingSummary.textContent =
+            "Thought process before first tool";
+        }
         assistantUI.toolUI.actions.hidden = false;
         assistantUI.toolUI.panel.open = true;
         renderToolActivity(assistantUI.toolUI, activity);
@@ -4388,9 +4489,9 @@ async function submitPrompt(prompt) {
     }
     assistantUI.processingStatus.hidden = true;
     assistantUI.thinkingPanel.classList.remove("streaming");
-    if (answer.thinking) {
+    if (answer.thinking && !assistantUI.toolUI.activities.size) {
       assistantUI.thinkingSummary.textContent = "Thought process";
-    } else {
+    } else if (!answer.thinking) {
       assistantUI.thinkingPanel.hidden = true;
     }
 
@@ -4415,6 +4516,9 @@ async function submitPrompt(prompt) {
         role: "assistant",
         content: answer.content,
         ...(answer.thinking ? { thinking: answer.thinking } : {}),
+        ...(answer.initialThinking
+          ? { initialThinking: answer.initialThinking }
+          : {}),
         ...(answer.toolActivities?.length
           ? { toolActivities: answer.toolActivities }
           : {}),

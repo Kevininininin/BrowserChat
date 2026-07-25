@@ -931,6 +931,59 @@ select {
   border-radius: 7px;
 }
 
+.tool-step-thinking {
+  margin: 8px 0 0 14px;
+  padding-top: 7px;
+  border-top: 1px solid #ecece7;
+}
+
+.tool-step-thinking[hidden] {
+  display: none;
+}
+
+.tool-step-thinking > summary {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  color: #686863;
+  font-size: 10px;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tool-step-thinking > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-step-thinking > summary::before {
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  content: "";
+  background: #858580;
+  border-radius: 50%;
+}
+
+.tool-step-thinking.streaming > summary::before {
+  background: #6f96c5;
+  box-shadow: 0 0 0 3px rgb(111 150 197 / 13%);
+  animation: thinkingPulse 1.15s ease-in-out infinite;
+}
+
+.tool-step-thinking-content {
+  max-height: 170px;
+  margin-top: 6px;
+  padding: 7px 8px;
+  overflow: auto;
+  color: #686863;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background: #f7f7f5;
+  border-radius: 7px;
+}
+
 .user .message {
   padding: 10px 14px;
   background: var(--assistant);
