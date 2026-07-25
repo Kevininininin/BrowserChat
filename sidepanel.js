@@ -4446,6 +4446,54 @@ function parseJsonObject(value) {
   }
 }
 
+async function shouldCreateObjectivePlan(prompt, signal) {
+  const system = [
+    "Briefly decide whether the user's request needs an explicit execution plan.",
+    "Return JSON only with {requiresPlanning, reason}.",
+    "Set requiresPlanning to true only when completing the request requires multiple dependent execution steps, multi-step reasoning, research across multiple sources or pages, or advance coordination of several tool actions.",
+    "Set requiresPlanning to false for a direct question, a single lookup, a single browser action, or a request that can be answered directly with ordinary tool use.",
+    "Judge the request's actual complexity, not merely whether a browser tool is available.",
+    "Keep reason to one short sentence."
+  ].join(" ");
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: elements.modelSelect.value,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: JSON.stringify({
+              request: prompt,
+              currentUrl: currentSite.pageUrl || "",
+              currentTabTitle: currentSite.tabTitle || ""
+            })
+          }
+        ],
+        stream: false,
+        think: false,
+        format: "json"
+      }),
+      signal
+    });
+    if (!response.ok) return true;
+    const data = await response.json();
+    const assessment = parseJsonObject(data.message?.content);
+    return typeof assessment?.requiresPlanning === "boolean"
+      ? assessment.requiresPlanning
+      : true;
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    console.warn(
+      "Planning complexity evaluation failed; retaining objective planning.",
+      error
+    );
+    return true;
+  }
+}
+
 async function createObjectivePlan(
   prompt,
   signal,
@@ -5769,14 +5817,21 @@ async function submitPrompt(prompt) {
       (skill) => skill.id === "computer-use"
     );
     if (usesComputerControl) {
-      assistantUI.processingLabel.textContent = "Planning browser task…";
-      objectivePlan = await createObjectivePlan(prompt, controller.signal);
-      const chat = chats.find((item) => item.id === chatId);
-      if (chat && objectivePlan) {
-        chat.objectivePlan = objectivePlan;
-        chat.updatedAt = Date.now();
-        renderObjectivePlan(objectivePlan);
-        await persistChats();
+      assistantUI.processingLabel.textContent = "Evaluating task complexity…";
+      const requiresPlanning = await shouldCreateObjectivePlan(
+        prompt,
+        controller.signal
+      );
+      if (requiresPlanning) {
+        assistantUI.processingLabel.textContent = "Planning browser task…";
+        objectivePlan = await createObjectivePlan(prompt, controller.signal);
+        const chat = chats.find((item) => item.id === chatId);
+        if (chat && objectivePlan) {
+          chat.objectivePlan = objectivePlan;
+          chat.updatedAt = Date.now();
+          renderObjectivePlan(objectivePlan);
+          await persistChats();
+        }
       }
     }
     assistantUI.addAttachments({
