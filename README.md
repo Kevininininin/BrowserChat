@@ -1,10 +1,12 @@
 # BrowserChat
 
-BrowserChat is essentially ChatGPT in a Chrome extension, powered entirely by local Ollama models and able to understand the page open in your browser. In a nutshell, it brings an Open WebUI-style experience into Chrome's side panel, with extensible skills and tools that open the door to many more workflows.
+BrowserChat is essentially ChatGPT in a Chrome extension, powered by local or Ollama Cloud models and able to understand the page open in your browser. In a nutshell, it brings an Open WebUI-style experience into Chrome's side panel, with extensible skills and tools that open the door to many more workflows.
 
 The extension captures the active tab's DOM, combines that page context with
-your prompt, and streams the response from Ollama. No page content is sent to a
-cloud service by BrowserChat.
+your prompt, and streams the response through Ollama. Local models keep model
+requests on your computer. When you explicitly select an Ollama Cloud model,
+the prompt and any attached page context or images are processed by Ollama
+Cloud after a one-time privacy confirmation.
 
 ## Requirements
 
@@ -56,8 +58,18 @@ OLLAMA_ORIGINS="chrome-extension://YOUR_EXTENSION_ID" ollama serve
    side panel.
 
 BrowserChat requires no package installation or build step. The model menu is
-populated automatically from the models available at
-`http://localhost:11434/api/tags`.
+populated from chat models available at `http://localhost:11434/api/tags` and
+also includes `gemma4:cloud` and `gemma4:31b-cloud`. Embedding-only models such
+as `nomic-embed-text` remain available to Files & RAG but are excluded from the
+chat model menu.
+
+### Optional: connect an Ollama Cloud model
+
+Select either Gemma 4 cloud model from the model menu. If it is not ready,
+BrowserChat displays a setup banner above the composer. Copy its command, run
+it in Terminal, approve Ollama's browser sign-in prompt, then click **Check
+again**. Chat requests continue through the local Ollama API; Ollama handles
+the authenticated cloud connection.
 
 ## Features
 

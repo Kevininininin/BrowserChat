@@ -1685,6 +1685,46 @@ select {
   border-color: #e0dfdb;
 }
 
+.cloud-model-banner {
+  background: #f6f2ff;
+  border-color: #dfd5fa;
+}
+
+.cloud-model-banner .site-access-icon {
+  color: #7255b8;
+  border-color: rgb(114 85 184 / 16%);
+}
+
+.cloud-model-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.cloud-model-actions .allow-site-button {
+  margin-left: 0;
+}
+
+.cloud-model-secondary-button {
+  height: 31px;
+  padding: 0 10px;
+  color: #5f4d8b;
+  font-size: 11px;
+  font-weight: 650;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid #d8cff0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.cloud-model-secondary-button:disabled,
+.cloud-model-actions .allow-site-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .site-access-icon {
   display: grid;
   flex: 0 0 auto;
@@ -3064,6 +3104,16 @@ select {
 
   .site-access-copy span {
     max-width: 160px;
+  }
+
+  .cloud-model-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .cloud-model-actions {
+    width: 100%;
+    margin: 2px 0 0 41px;
   }
 
   .context-preview-dialog {

@@ -67,7 +67,7 @@
             </svg>
           </div>
           <h2>Ask about this page</h2>
-          <p>BrowserChat sends the page’s rendered text, controls, and your prompt directly to Ollama on this computer.</p>
+          <p>BrowserChat sends your prompt and selected page context directly to your chosen Ollama model.</p>
           <div class="suggestions">
             <button class="suggestion" type="button">Summarize what’s on this page</button>
             <button class="suggestion" type="button">Find the most important details</button>
@@ -77,6 +77,21 @@
       </main>
 
       <footer class="composer-wrap">
+        <div id="cloudModelBanner" class="site-access-banner cloud-model-banner" role="status" hidden>
+          <div class="site-access-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M7.5 18.5h9a4 4 0 0 0 .7-7.94A5.5 5.5 0 0 0 6.73 9.4 4.6 4.6 0 0 0 7.5 18.5Z"/>
+            </svg>
+          </div>
+          <div class="site-access-copy">
+            <strong id="cloudModelTitle">Connect to Ollama Cloud</strong>
+            <span id="cloudModelDescription">Sign in through Ollama before using this model.</span>
+          </div>
+          <div class="cloud-model-actions">
+            <button id="cloudModelSecondaryButton" class="cloud-model-secondary-button" type="button">Check again</button>
+            <button id="cloudModelPrimaryButton" class="allow-site-button" type="button">Copy command</button>
+          </div>
+        </div>
         <div id="siteAccessBanner" class="site-access-banner" role="status">
           <div class="site-access-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">

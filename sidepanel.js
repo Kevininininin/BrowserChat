@@ -1,4 +1,6 @@
 const OLLAMA_BASE_URL = "http://localhost:11434";
+const CLOUD_MODELS = ["gemma4:cloud", "gemma4:31b-cloud"];
+const CLOUD_PRIVACY_STORAGE_KEY = "ollamaCloudPrivacyAccepted";
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_TOOL_CALLS_PER_RESPONSE = 30;
 const AGENT_OBSERVATION_TEXT_LIMIT = 2_500;
@@ -101,6 +103,11 @@ const elements = {
   siteAccessTitle: document.querySelector("#siteAccessTitle"),
   siteAccessDescription: document.querySelector("#siteAccessDescription"),
   allowSiteButton: document.querySelector("#allowSiteButton"),
+  cloudModelBanner: document.querySelector("#cloudModelBanner"),
+  cloudModelTitle: document.querySelector("#cloudModelTitle"),
+  cloudModelDescription: document.querySelector("#cloudModelDescription"),
+  cloudModelPrimaryButton: document.querySelector("#cloudModelPrimaryButton"),
+  cloudModelSecondaryButton: document.querySelector("#cloudModelSecondaryButton"),
   contextPreviewDialog: document.querySelector("#contextPreviewDialog"),
   contextPreviewContent: document.querySelector("#contextPreviewContent"),
   previewTitle: document.querySelector("#previewTitle"),
@@ -182,6 +189,56 @@ let currentSite = {
   hasAccess: false,
   restricted: false
 };
+let availableOllamaModels = new Set();
+let cloudPrivacyAccepted = false;
+let checkingCloudModel = false;
+
+function isCloudModel(model = elements.modelSelect?.value || "") {
+  return CLOUD_MODELS.includes(model);
+}
+
+function isEmbeddingModel(model = "") {
+  return model === "nomic-embed-text" ||
+    model.startsWith("nomic-embed-text:") ||
+    model.toLowerCase().includes("embed");
+}
+
+function isSelectedCloudModelReady() {
+  const model = elements.modelSelect.value;
+  return !isCloudModel(model) || availableOllamaModels.has(model);
+}
+
+function renderCloudModelBanner() {
+  const model = elements.modelSelect.value;
+  const cloudSelected = isCloudModel(model);
+  if (!cloudSelected) {
+    elements.cloudModelBanner.hidden = true;
+    updateSendButton();
+    return;
+  }
+
+  elements.cloudModelBanner.hidden = false;
+  elements.cloudModelPrimaryButton.disabled = checkingCloudModel;
+  elements.cloudModelSecondaryButton.disabled = checkingCloudModel;
+
+  if (!availableOllamaModels.has(model)) {
+    elements.cloudModelTitle.textContent = `Connect ${model} to Ollama`;
+    elements.cloudModelDescription.textContent =
+      "Copy and run this command in Terminal, approve the Ollama browser prompt, then check again.";
+    elements.cloudModelPrimaryButton.textContent = "Copy command";
+    elements.cloudModelSecondaryButton.textContent =
+      checkingCloudModel ? "Checking…" : "Check again";
+  } else if (!cloudPrivacyAccepted) {
+    elements.cloudModelTitle.textContent = "This model uses Ollama Cloud";
+    elements.cloudModelDescription.textContent =
+      "Prompts, attached page content, and images sent to this model leave your computer for processing by Ollama.";
+    elements.cloudModelPrimaryButton.textContent = "Use cloud";
+    elements.cloudModelSecondaryButton.textContent = "Choose local";
+  } else {
+    elements.cloudModelBanner.hidden = true;
+  }
+  updateSendButton();
+}
 
 function createChat() {
   return {
@@ -1006,6 +1063,8 @@ function updateSendButton() {
   elements.sendButton.disabled =
     !getPromptText().trim() ||
     !elements.modelSelect.value ||
+    !isSelectedCloudModelReady() ||
+    (isCloudModel() && !cloudPrivacyAccepted) ||
     (domContextEnabled && !currentSite.hasAccess);
 }
 
@@ -2950,21 +3009,22 @@ async function loadModels() {
     }
 
     const data = await response.json();
-    const models = (data.models || []).map((model) => model.name).filter(Boolean);
+    const returnedModels = (data.models || [])
+      .map((model) => model.name)
+      .filter(Boolean);
+    availableOllamaModels = new Set(returnedModels);
+    const localModels = returnedModels.filter(
+      (model) => !isEmbeddingModel(model) && !isCloudModel(model)
+    );
+    const models = [...new Set([...localModels, ...CLOUD_MODELS])];
     const saved = await chrome.storage.local.get([
       "selectedModel",
-      "thinkingEnabled"
+      "thinkingEnabled",
+      CLOUD_PRIVACY_STORAGE_KEY
     ]);
+    cloudPrivacyAccepted = saved[CLOUD_PRIVACY_STORAGE_KEY] === true;
 
     elements.modelSelect.replaceChildren();
-    if (!models.length) {
-      const option = new Option("No models installed", "");
-      elements.modelSelect.add(option);
-      setConnectionStatus("offline", "Ollama is running, but no models are installed");
-      setError("Ollama is connected, but no models are installed. Run “ollama pull gemma3:4b” in Terminal.");
-      return;
-    }
-
     for (const model of models) {
       elements.modelSelect.add(new Option(model, model));
     }
@@ -2975,8 +3035,11 @@ async function loadModels() {
       saved.thinkingEnabled === false ? "off" : "on";
     setConnectionStatus("online", "Connected to Ollama");
     setError("");
+    renderCloudModelBanner();
   } catch (error) {
+    availableOllamaModels = new Set();
     elements.modelSelect.replaceChildren(new Option("Ollama unavailable", ""));
+    elements.cloudModelBanner.hidden = true;
     setConnectionStatus("offline", "Could not connect to Ollama");
     setError(
       "Couldn’t connect to Ollama. Start it with Chrome-extension origins enabled, then reopen this panel."
@@ -2984,6 +3047,82 @@ async function loadModels() {
   } finally {
     updateSendButton();
   }
+}
+
+function chooseFirstLocalModel() {
+  const localOption = [...elements.modelSelect.options].find(
+    (option) => option.value && !isCloudModel(option.value)
+  );
+  if (!localOption) {
+    setError("No local chat model is installed. Install one with Ollama or finish connecting a cloud model.");
+    return;
+  }
+  elements.modelSelect.value = localOption.value;
+  void chrome.storage.local.set({ selectedModel: localOption.value });
+  renderCloudModelBanner();
+}
+
+async function copyCloudSetupCommand() {
+  const model = elements.modelSelect.value;
+  if (!isCloudModel(model)) return;
+  const command = `ollama run ${model}`;
+  try {
+    await navigator.clipboard.writeText(command);
+    elements.cloudModelPrimaryButton.textContent = "Copied";
+    elements.cloudModelDescription.textContent =
+      `Run “${command}” in Terminal and approve the browser connection, then return here.`;
+  } catch {
+    elements.cloudModelDescription.textContent =
+      `Run “${command}” in Terminal, approve the browser connection, then return here.`;
+  }
+}
+
+async function checkCloudModelAgain() {
+  checkingCloudModel = true;
+  renderCloudModelBanner();
+  await loadModels();
+  checkingCloudModel = false;
+  renderCloudModelBanner();
+  if (isCloudModel() && !isSelectedCloudModelReady()) {
+    setError("Ollama is reachable, but this cloud model is not ready yet. Finish the Terminal sign-in flow, then check again.");
+  }
+}
+
+async function acceptCloudPrivacy() {
+  cloudPrivacyAccepted = true;
+  await chrome.storage.local.set({ [CLOUD_PRIVACY_STORAGE_KEY]: true });
+  renderCloudModelBanner();
+  setConnectionStatus("online", "Connected to Ollama · Cloud model selected");
+}
+
+function getOllamaErrorMessage(error, model = elements.modelSelect.value) {
+  const message = error?.message || "Something went wrong.";
+  if (!isCloudModel(model)) return message;
+
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("sign in") ||
+    normalized.includes("signin") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("authentication") ||
+    normalized.includes("http 401")
+  ) {
+    availableOllamaModels.delete(model);
+    renderCloudModelBanner();
+    return "Ollama Cloud needs to be connected again. Run the setup command above, then check again.";
+  }
+  if (
+    normalized.includes("quota") ||
+    normalized.includes("usage limit") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("http 429")
+  ) {
+    return "Your Ollama Cloud allowance is currently unavailable or exhausted. Check your Ollama account usage, or choose a local model.";
+  }
+  if (normalized.includes("failed to fetch") || normalized.includes("network")) {
+    return "The local Ollama service is running, but it could not reach Ollama Cloud. Check your internet connection and try again.";
+  }
+  return message;
 }
 
 async function selectElementFromActivePage() {
@@ -6829,7 +6968,7 @@ async function submitPrompt(prompt) {
         assistantUI.thinkingPanel.hidden = true;
       }
       assistantUI.message.textContent = "I couldn’t complete that request.";
-      setError(error.message || "Something went wrong.");
+      setError(getOllamaErrorMessage(error, selectedModel));
     }
   } finally {
     await removeBrowserControlIndicator();
@@ -6951,7 +7090,30 @@ elements.skillPickerList.addEventListener("click", (event) => {
 
 elements.modelSelect.addEventListener("change", async () => {
   await chrome.storage.local.set({ selectedModel: elements.modelSelect.value });
+  setError("");
+  if (isCloudModel() && isSelectedCloudModelReady() && cloudPrivacyAccepted) {
+    setConnectionStatus("online", "Connected to Ollama · Cloud model selected");
+  } else {
+    setConnectionStatus("online", "Connected to Ollama");
+  }
+  renderCloudModelBanner();
   updateSendButton();
+});
+
+elements.cloudModelPrimaryButton.addEventListener("click", () => {
+  if (isSelectedCloudModelReady()) {
+    void acceptCloudPrivacy();
+  } else {
+    void copyCloudSetupCommand();
+  }
+});
+
+elements.cloudModelSecondaryButton.addEventListener("click", () => {
+  if (isSelectedCloudModelReady()) {
+    chooseFirstLocalModel();
+  } else {
+    void checkCloudModelAgain();
+  }
 });
 
 elements.thinkingSelect.addEventListener("change", async () => {
