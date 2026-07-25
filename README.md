@@ -146,9 +146,11 @@ are attached only when Mermaid is explicitly or implicitly selected.
 
 ## Tools
 
-BrowserChat currently provides a `calculate` tool with addition, subtraction,
-multiplication, and division. The tool validates numeric inputs and returns a
-structured error for invalid operations or division by zero.
+BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
+`observe_page`, `fill_field`, `click_element`, `select_option`, `scroll_page`,
+`take_screenshot`, and `wait_for_page`. Browser actions use short-lived element references from
+the latest observation, execute sequentially, and require re-observation for
+verification. Password fields and submit-like controls are blocked.
 
 Tools are organized by responsibility:
 
@@ -156,6 +158,7 @@ Tools are organized by responsibility:
 tools/
 ├── registry.js
 ├── calculator.js
+├── browser.js
 ├── capabilities.js
 └── index.js
 ```
@@ -176,16 +179,16 @@ During a response, the activity panel uses a friendly progress label such as
 Completed tool activity is kept with the saved assistant message and can be
 expanded later to inspect its input and result.
 
-The tool loop has no fixed round limit. While it is active, **Answer now**
+The tool loop stops after 30 tool calls in one response. While it is active, **Answer now**
 cancels the current tool-enabled model round and starts a final request with
 tools disabled, using the conversation and completed tool results accumulated
-so far. Tool implementations may accept a second `{ signal }` argument if they
-need to cancel long-running work when **Answer now** is selected.
+so far. The composer’s Stop control aborts the active run, including cancellable
+tool implementations that accept the second `{ signal }` argument.
 
-When Ollama requests multiple tools in one response, BrowserChat runs those
-calls concurrently with `Promise.all` and returns every result in one follow-up
-request. Independent work can therefore share a round; work that consumes a
-previous tool result still requires a later round.
+When Ollama requests multiple tools in one response, BrowserChat runs the calls
+sequentially and returns every result in one follow-up request. This avoids races
+between browser mutations such as filling a field and clicking a navigation
+button.
 
 Use **Preview page context** below the composer to inspect the exact structured page information that will be attached to the next prompt.
 

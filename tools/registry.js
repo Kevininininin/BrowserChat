@@ -55,6 +55,7 @@
       const result = await tool.execute(call.function.arguments || {}, context);
       return JSON.stringify({ ok: true, result });
     } catch (error) {
+      if (error?.name === "AbortError") throw error;
       return JSON.stringify({
         ok: false,
         error: error instanceof Error ? error.message : String(error)
