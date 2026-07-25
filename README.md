@@ -22,6 +22,18 @@
 
 https://github.com/user-attachments/assets/233666ba-b0e1-4b6b-9ad6-5ab8b155e7d6
 
+## Contents
+
+- [What you can do](#what-you-can-do)
+- [Quick start](#quick-start)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Skills](#skills)
+- [Tools](#tools)
+- [Privacy and permissions](#privacy-and-permissions)
+- [Troubleshooting](#troubleshooting)
+
+
 ## What you can do
 
 - **Ask about any page:** attach the rendered page or a selected section as
@@ -50,16 +62,6 @@ The settings experience documents how prompts, page context, RAG, skills, tools,
 and Ollama fit together.
 
 ![BrowserChat Agent Runtime settings and side panel](docs/media/browserchat-agent-runtime.png)
-
-## Contents
-
-- [Quick start](#quick-start)
-- [Features](#features)
-- [How it works](#how-it-works)
-- [Skills](#skills)
-- [Tools](#tools)
-- [Privacy and permissions](#privacy-and-permissions)
-- [Troubleshooting](#troubleshooting)
 
 ## Quick start
 
