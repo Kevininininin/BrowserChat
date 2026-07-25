@@ -34,9 +34,9 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
-        name: "search_page_content",
+        name: "search_captured_page_text",
         description:
-          "Retrieve the most relevant text passages from the latest full page snapshot using the configured local RAG settings. Use this for long page content, not for locating controls.",
+          "Search only the latest captured page snapshot for relevant text passages using local RAG. This does not submit a website search, navigate, refresh results, or access new web content.",
         parameters: {
           type: "object",
           required: ["query"],
@@ -44,7 +44,7 @@ BrowserChatTools.define((register) => {
             query: {
               type: "string",
               description:
-                "A focused semantic query describing the page information needed for the current objective."
+                "A focused semantic query for information already present in the captured page snapshot."
             }
           }
         }
@@ -52,7 +52,7 @@ BrowserChatTools.define((register) => {
     },
     execute(arguments_, context) {
       context.signal?.throwIfAborted();
-      return getRuntime().searchPageContent(arguments_, context);
+      return getRuntime().searchCapturedPageText(arguments_, context);
     }
   });
 
@@ -62,7 +62,7 @@ BrowserChatTools.define((register) => {
       function: {
         name: "fill_field",
         description:
-          "Replace the contents of a text input, textarea, or contenteditable element and verify that the value was accepted.",
+          "Replace and verify the contents of a text field. Set submit to true only for a search-like field when the query should be submitted immediately.",
         parameters: {
           type: "object",
           required: ["elementRef", "text"],
@@ -71,6 +71,11 @@ BrowserChatTools.define((register) => {
             text: {
               type: "string",
               description: "The exact text to enter."
+            },
+            submit: {
+              type: "boolean",
+              description:
+                "Submit the containing search form after filling. Allowed only for fields that can be identified as search-like."
             }
           }
         }

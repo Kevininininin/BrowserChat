@@ -423,13 +423,27 @@ function renderCurrentConversation() {
   shouldAutoScrollConversation = true;
   elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
   elements.emptyState.hidden = chatHistory.length > 0;
-  for (const message of chatHistory) {
+  for (const [index, message] of chatHistory.entries()) {
+    const triggeringMessage = message.role === "assistant"
+      ? [...chatHistory.slice(0, index)].reverse().find(
+          (candidate) => candidate.role === "user"
+        )
+      : null;
     appendMessage(message.role, message.content, {
       toolActivities: message.toolActivities,
       initialThinking: message.initialThinking,
+      thinking: message.thinking,
       skillActivities: message.skillActivities,
       sourceReferences: message.sourceReferences,
-      attachments: message.attachments
+      attachments:
+        message.role === "assistant"
+          ? triggeringMessage?.attachments
+          : message.attachments,
+      triggeringPrompt: triggeringMessage?.content,
+      model: message.model,
+      pageUrl: message.pageUrl,
+      responseId: message.responseId,
+      createdAt: message.createdAt
     });
   }
 }
@@ -1513,10 +1527,10 @@ function getToolActivityCopy(toolName, status) {
       completed: "Observed page",
       failed: "Page observation failed"
     },
-    search_page_content: {
-      running: "Searching page content…",
-      completed: "Searched page content",
-      failed: "Page content search failed"
+    search_captured_page_text: {
+      running: "Searching captured page text…",
+      completed: "Searched captured page text",
+      failed: "Captured page text search failed"
     },
     fill_field: {
       running: "Filling field…",
@@ -1788,6 +1802,104 @@ function appendStoredThinking(contentWrap, thinking, hasTools = false) {
   contentWrap.append(panel);
 }
 
+function buildResponseTrace(content, options = {}) {
+  return {
+    schema: "browserchat.response-trace.v1",
+    responseId: options.responseId || null,
+    createdAt: options.createdAt
+      ? new Date(options.createdAt).toISOString()
+      : null,
+    chat: {
+      id: activeChatId,
+      title: getActiveChat()?.title || DEFAULT_CHAT_TITLE
+    },
+    request: {
+      prompt: options.triggeringPrompt || "",
+      model: options.model || null,
+      pageUrl: options.pageUrl || null,
+      attachments: options.attachments || []
+    },
+    skills: (options.skillActivities || []).map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      selectionSource: skill.selectionSource,
+      injectedInstructions: skill.instructions
+    })),
+    reasoning: {
+      initial: options.initialThinking || "",
+      combined: options.thinking || ""
+    },
+    toolCalls: (options.toolActivities || []).map((activity, index) => ({
+      sequence: index + 1,
+      id: activity.id || null,
+      name: activity.name || "unknown",
+      status: activity.status || "unknown",
+      unsupported: Boolean(activity.unsupported),
+      arguments: activity.arguments ?? {},
+      result: activity.result ?? null,
+      thinkingAfter: activity.thinkingAfter || ""
+    })),
+    retrievedSources: options.sourceReferences || [],
+    response: {
+      hasFinalOutput: Boolean(String(content || "").trim()),
+      finalOutput: content || ""
+    }
+  };
+}
+
+function downloadResponseTrace(trace) {
+  const exported = {
+    ...trace,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const title = trace.chat?.title || "browserchat";
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "browserchat";
+  link.href = url;
+  link.download = `${slug}-response-trace-${Date.now()}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function createResponseDownloadControl(initialTrace = null) {
+  let trace = initialTrace;
+  const wrap = document.createElement("div");
+  wrap.className = "response-actions";
+  const button = document.createElement("button");
+  button.className = "response-download-button";
+  button.type = "button";
+  button.title = "Download response trace as JSON";
+  button.setAttribute("aria-label", "Download response trace as JSON");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/>
+    </svg>
+  `;
+  button.hidden = !trace;
+  button.addEventListener("click", () => {
+    if (trace) downloadResponseTrace(trace);
+  });
+  wrap.append(button);
+  return {
+    wrap,
+    setTrace(nextTrace) {
+      trace = nextTrace;
+      button.hidden = !trace;
+    }
+  };
+}
+
 function appendMessage(role, content = "", options = {}) {
   elements.emptyState.hidden = true;
 
@@ -1863,6 +1975,12 @@ function appendMessage(role, content = "", options = {}) {
     message.append(text);
   }
   contentWrap.append(message);
+  if (role === "assistant") {
+    const download = createResponseDownloadControl(
+      buildResponseTrace(content, options)
+    );
+    contentWrap.append(download.wrap);
+  }
   row.append(contentWrap);
   elements.conversation.append(row);
   scrollToLatest({ force: options.forceScroll });
@@ -2159,6 +2277,8 @@ function appendAssistantMessage({
   message.className = "message pending";
   message.textContent = "";
   contentWrap.append(message);
+  const download = createResponseDownloadControl();
+  contentWrap.append(download.wrap);
 
   row.append(contentWrap);
   elements.conversation.append(row);
@@ -2172,6 +2292,7 @@ function appendAssistantMessage({
     thinkingSummary,
     thinkingContent,
     toolUI,
+    setDownloadTrace: download.setTrace,
     addAttachments: (attachments) => addReplyAttachments(attachmentArea, attachments),
     showSkills: (skills) => {
       skillUsageSlot.replaceChildren(
@@ -3149,11 +3270,11 @@ async function observePageForAgent({ signal } = {}) {
       totalAvailableTextCharacters: page.stats.totalAvailableTextCharacters
     },
     instruction:
-      "This is a compact action-oriented observation. Element references are valid only for this observation. Use search_page_content for long page text. Observe again after navigation or a meaningful structural change."
+      "This is a compact action-oriented observation. Element references are valid only for this observation. Use search_captured_page_text only for long-form information already present in this snapshot. Observe again after navigation or a meaningful structural change."
   };
 }
 
-async function searchPageContentForAgent({ query } = {}, { signal } = {}) {
+async function searchCapturedPageTextForAgent({ query } = {}, { signal } = {}) {
   signal?.throwIfAborted();
   const focusedQuery = String(query || "").trim();
   if (!focusedQuery) throw new Error("A focused page-content query is required.");
@@ -3183,6 +3304,11 @@ async function searchPageContentForAgent({ query } = {}, { signal } = {}) {
   });
   return {
     observationId: agentObservationState.observationId,
+    snapshot: {
+      url: agentObservationState.page.page?.url || "",
+      title: agentObservationState.page.page?.title || "",
+      capturedAt: agentObservationState.page.capturedAt || null
+    },
     query: focusedQuery,
     passages: retrieval.chunks.map((chunk) => ({
       chunk: chunk.chunkIndex + 1,
@@ -3194,8 +3320,33 @@ async function searchPageContentForAgent({ query } = {}, { signal } = {}) {
       finalChunkCount: BrowserChatRag.getSettings().finalChunkCount,
       maximumContextTokens: BrowserChatRag.getSettings().maximumContextTokens,
       neighborExpansion: BrowserChatRag.getSettings().neighborExpansion
-    }
+    },
+    limitation:
+      "These passages come only from the captured snapshot above. No website search, navigation, refresh, or web request was performed."
   };
+}
+
+async function waitForAgentUrlChange(tabId, beforeUrl, signal, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    signal?.throwIfAborted();
+    let tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
+      return { changed: true, url: "" };
+    }
+    if ((tab.url || "") !== beforeUrl) {
+      if (tab.status !== "complete") {
+        await waitWithSignal(150, signal);
+        continue;
+      }
+      return { changed: true, url: tab.url || "" };
+    }
+    await waitWithSignal(100, signal);
+  }
+  const tab = await chrome.tabs.get(tabId);
+  return { changed: (tab.url || "") !== beforeUrl, url: tab.url || "" };
 }
 
 async function performAgentElementAction(action, payload, { signal } = {}) {
@@ -3316,11 +3467,61 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
         const observed = element.matches("[contenteditable='true']")
           ? element.textContent || ""
           : element.value;
+        const submitRequested = payload.submit === true;
+        let submissionMethod = null;
+
+        if (submitRequested) {
+          if (observed !== text) {
+            throw new Error(
+              "The field value could not be verified, so the search was not submitted."
+            );
+          }
+          const form = element.closest("form");
+          const searchEvidence = [
+            type,
+            role,
+            current.label,
+            current.name,
+            element.getAttribute("placeholder"),
+            form?.getAttribute("role"),
+            form?.getAttribute("aria-label"),
+            form?.getAttribute("action")
+          ].map(normalize).join(" ").toLowerCase();
+          const isSearchLike =
+            type === "search" ||
+            role === "searchbox" ||
+            form?.getAttribute("role") === "search" ||
+            /(^|[\s/_-])(search|query|find)([\s/_-]|$)/i.test(searchEvidence) ||
+            current.name === "q";
+          if (!form || !isSearchLike) {
+            throw new Error(
+              "submit is allowed only for a field inside a recognizable search form."
+            );
+          }
+
+          const submitter = Array.from(
+            form.querySelectorAll(
+              "button[type='submit'], input[type='submit'], button:not([type])"
+            )
+          ).find((candidate) =>
+            isVisible(candidate) &&
+            !candidate.matches(":disabled") &&
+            candidate.getAttribute("aria-disabled") !== "true"
+          );
+          submissionMethod = submitter ? "search-button" : "form-request-submit";
+          setTimeout(() => {
+            if (submitter?.isConnected) submitter.click();
+            else if (form.isConnected) form.requestSubmit();
+          }, 0);
+        }
+
         return {
           action: "fill_field",
           verified: observed === text,
           enteredCharacterCount: text.length,
-          observedCharacterCount: observed.length
+          observedCharacterCount: observed.length,
+          submitted: submitRequested,
+          ...(submissionMethod ? { submissionMethod } : {})
         };
       }
 
@@ -3370,11 +3571,52 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
   });
   signal?.throwIfAborted();
   if (!result) throw new Error("The browser action returned no result.");
+
+  if (action === "fill" && result.submitted) {
+    const previousObservationId = agentObservationState.observationId;
+    const transition = await waitForAgentUrlChange(
+      tab.id,
+      tab.url || "",
+      signal
+    );
+    const postSubmitObservation = await observePageForAgent({ signal });
+    return {
+      previousObservationId,
+      observationId: postSubmitObservation.observationId,
+      elementRef,
+      ...result,
+      beforeUrl: tab.url || "",
+      afterUrl: transition.url,
+      navigationDetected: transition.changed,
+      pageChange: transition.changed ? "navigation" : "no-url-change",
+      requiresObservation: false,
+      postSubmitObservation,
+      nextStep: transition.changed
+        ? "The search was submitted and the resulting page is included in postSubmitObservation. Use it directly; do not call observe_page again."
+        : "The search submission was dispatched but the URL did not change. Inspect postSubmitObservation before deciding whether recovery is needed; do not repeat the fill blindly."
+    };
+  }
+
+  const checkedStateChanged =
+    action === "click" &&
+    result.beforeChecked !== null &&
+    result.afterChecked !== null &&
+    result.beforeChecked !== result.afterChecked;
+  const requiresObservation = action === "click" && !checkedStateChanged;
+  const nextStep = action === "fill"
+    ? "The field value was verified but not submitted. Continue with the latest evidence, or explicitly submit the search; do not observe merely to re-verify the text."
+    : action === "select"
+      ? "The selected value was verified. Continue without observing unless another control is needed or the interface changed."
+      : checkedStateChanged
+        ? "The checked state changed and was verified. Continue without observing unless the interface changed."
+        : "The click was dispatched, but its page effect is not yet verified. Call observe_page if the objective depends on navigation or a structural change.";
   return {
     observationId: agentObservationState.observationId,
     elementRef,
     ...result,
-    nextStep: "Call observe_page to verify the resulting page state."
+    pageChange: requiresObservation ? "unknown" : "none-required",
+    requiresObservation,
+    nextStep
   };
 }
 
@@ -3460,7 +3702,7 @@ function waitWithSignal(milliseconds, signal) {
 
 globalThis.BrowserChatAgentRuntime = Object.freeze({
   observe: observePageForAgent,
-  searchPageContent: searchPageContentForAgent,
+  searchCapturedPageText: searchCapturedPageTextForAgent,
   fillField: (arguments_, context) =>
     performAgentElementAction("fill", arguments_, context),
   clickElement: (arguments_, context) =>
@@ -3931,8 +4173,9 @@ function summarizeAgentToolActivity(activity) {
       summary.returnedInteractiveElements =
         payload.stats?.returnedInteractiveElements;
       break;
-    case "search_page_content":
+    case "search_captured_page_text":
       summary.observationId = payload.observationId;
+      summary.snapshot = payload.snapshot;
       summary.query = payload.query;
       summary.retrievedPassages = Array.isArray(payload.passages)
         ? payload.passages.length
@@ -3941,15 +4184,21 @@ function summarizeAgentToolActivity(activity) {
     case "fill_field":
       summary.verified = payload.verified;
       summary.enteredCharacterCount = payload.enteredCharacterCount;
+      summary.submitted = payload.submitted;
+      summary.navigationDetected = payload.navigationDetected;
+      summary.afterUrl = payload.afterUrl;
+      summary.requiresObservation = payload.requiresObservation;
       break;
     case "click_element":
       summary.clicked = payload.clicked;
       summary.beforeChecked = payload.beforeChecked;
       summary.afterChecked = payload.afterChecked;
+      summary.requiresObservation = payload.requiresObservation;
       break;
     case "select_option":
       summary.verified = payload.verified;
       summary.selectedLabel = payload.selectedLabel;
+      summary.requiresObservation = payload.requiresObservation;
       break;
     case "scroll_page":
       summary.observationId = payload.observationId;
@@ -4500,9 +4749,35 @@ async function submitPrompt(prompt) {
     }
 
     assistantUI.message.classList.remove("pending");
+    const responseCreatedAt = Date.now();
+    const assistantRecord = {
+      role: "assistant",
+      responseId: crypto.randomUUID(),
+      createdAt: responseCreatedAt,
+      model: selectedModel,
+      pageUrl: currentSite.pageUrl || null,
+      content: answer.content,
+      ...(answer.thinking ? { thinking: answer.thinking } : {}),
+      ...(answer.initialThinking
+        ? { initialThinking: answer.initialThinking }
+        : {}),
+      ...(answer.toolActivities?.length
+        ? { toolActivities: answer.toolActivities }
+        : {}),
+      ...(skillActivities.length ? { skillActivities } : {}),
+      ...(retrieval.sources.length
+        ? { sourceReferences: retrieval.sources }
+        : {})
+    };
+    assistantUI.setDownloadTrace(buildResponseTrace(answer.content, {
+      ...assistantRecord,
+      triggeringPrompt: prompt,
+      attachments: submittedAttachmentRefs
+    }));
     chatHistory.push(
       {
         role: "user",
+        createdAt: responseCreatedAt,
         content: prompt,
         ...(submittedAttachmentRefs.length
           ? {
@@ -4512,21 +4787,7 @@ async function submitPrompt(prompt) {
             }
           : {})
       },
-      {
-        role: "assistant",
-        content: answer.content,
-        ...(answer.thinking ? { thinking: answer.thinking } : {}),
-        ...(answer.initialThinking
-          ? { initialThinking: answer.initialThinking }
-          : {}),
-        ...(answer.toolActivities?.length
-          ? { toolActivities: answer.toolActivities }
-          : {}),
-        ...(skillActivities.length ? { skillActivities } : {}),
-        ...(retrieval.sources.length
-          ? { sourceReferences: retrieval.sources }
-          : {})
-      }
+      assistantRecord
     );
     const chat = chats.find((item) => item.id === chatId);
     if (chat) {

@@ -19,7 +19,7 @@
     missingInformationInstruction:
       "If the requested information is not present, say so plainly.",
     toolInstruction:
-      "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. For browser actions, call observe_page first, use only element references from its latest result, and perform one action at a time. Treat an action tool's structured result as the first verification signal; observe again only after navigation, a meaningful structural change, a stale reference, or insufficient evidence. Use search_page_content for relevant long-form text from the latest snapshot. Use take_screenshot only when visual information is necessary. Never claim an action succeeded without tool evidence. Submit-like controls and password fields are intentionally blocked.",
+      "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. For browser actions, call observe_page first, use only element references from its latest result, and perform one action at a time. Treat structured action results as the first verification signal and follow their requiresObservation field. A verified field fill is not a submitted form: use fill_field with submit true for a search-like field when the query must run. Observe again only after navigation, a meaningful structural change, a stale reference, or insufficient evidence. search_captured_page_text searches only text in the latest captured snapshot; it does not perform a website or web search. Use take_screenshot only when visual information is necessary. Never claim an action succeeded without tool evidence. Consequential submit-like controls and password fields are intentionally blocked.",
     skillInstruction:
       "Skills are prompt instructions that have already been applied to this response. They are not tools or functions. Follow any attached skill instructions directly, and never request a tool named skill or use a skill name as a tool call.",
     markdownInstruction:
@@ -39,10 +39,17 @@
   function normalizePromptSettings(value) {
     const source = value && typeof value === "object" ? value : {};
     return Object.fromEntries(
-      Object.entries(DEFAULT_PROMPT_SETTINGS).map(([key, fallback]) => [
-        key,
-        typeof source[key] === "string" ? source[key].trim() : fallback
-      ])
+      Object.entries(DEFAULT_PROMPT_SETTINGS).map(([key, fallback]) => {
+        const configured =
+          typeof source[key] === "string" ? source[key].trim() : fallback;
+        return [
+          key,
+          configured.replaceAll(
+            "search_page_content",
+            "search_captured_page_text"
+          )
+        ];
+      })
     );
   }
 

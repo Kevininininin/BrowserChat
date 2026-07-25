@@ -118,6 +118,12 @@ On each message, BrowserChat:
    evidence for that round. These timeline segments persist with the chat.
 9. Streams Ollama's separate thinking and answer fields into the side panel.
 
+Each assistant reply includes a small download action that exports a versioned
+JSON response trace. The trace contains the triggering prompt, model, selected
+skills and injected instructions, initial and combined reasoning, ordered tool
+calls with arguments, results, status, and post-tool reasoning, retrieved
+sources, attachments metadata, and the final response.
+
 ## Skills
 
 Type `/` in the composer to open the skill picker. Choosing a skill attaches it
@@ -154,13 +160,15 @@ attached only when the skill is explicitly or automatically selected.
 ## Tools
 
 BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
-`observe_page`, `search_page_content`, `fill_field`, `click_element`,
+`observe_page`, `search_captured_page_text`, `fill_field`, `click_element`,
 `select_option`, `scroll_page`, `take_screenshot`, and `wait_for_page`.
 Browser actions use short-lived element references from the latest compact
-observation and execute sequentially. Long page text is retrieved lazily from
-the latest full snapshot through the configured local RAG settings. Superseded
-tool payloads and screenshot images are compacted between model rounds.
-Password fields and submit-like controls are blocked.
+observation and execute sequentially. `fill_field` can safely submit recognized
+search fields and return the resulting observation. Long page text is retrieved
+lazily from the latest captured snapshot through the configured local RAG
+settings; this snapshot search never performs a website search or navigation.
+Superseded tool payloads and screenshot images are compacted between model
+rounds. Password fields and consequential submit-like controls are blocked.
 
 Tools are organized by responsibility:
 

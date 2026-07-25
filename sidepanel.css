@@ -996,6 +996,50 @@ select {
   padding: 1px 4px;
 }
 
+.response-actions {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 24px;
+  padding: 3px 2px 0;
+}
+
+.response-download-button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #858580;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.response-download-button[hidden] {
+  display: none;
+}
+
+.response-download-button:hover {
+  color: #343431;
+  background: #efefeb;
+}
+
+.response-download-button:focus-visible {
+  outline: 2px solid #6f96c5;
+  outline-offset: 1px;
+}
+
+.response-download-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .assistant .message > :first-child {
   margin-top: 0;
 }
