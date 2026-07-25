@@ -1,6 +1,9 @@
 const OLLAMA_BASE_URL = "http://localhost:11434";
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_TOOL_CALLS_PER_RESPONSE = 30;
+const AGENT_OBSERVATION_TEXT_LIMIT = 2_500;
+const AGENT_OBSERVATION_ELEMENT_LIMIT = 40;
+const AGENT_WORKING_MEMORY_ACTION_LIMIT = 12;
 const MAX_MEMORIZED_DOM_ATTACHMENTS = 3;
 const CHAT_STORAGE_KEY = "pagewiseChats";
 const ACTIVE_CHAT_STORAGE_KEY = "pagewiseActiveChatId";
@@ -1509,6 +1512,11 @@ function getToolActivityCopy(toolName, status) {
       completed: "Observed page",
       failed: "Page observation failed"
     },
+    search_page_content: {
+      running: "Searching page content…",
+      completed: "Searched page content",
+      failed: "Page content search failed"
+    },
     fill_field: {
       running: "Filling field…",
       completed: "Filled field",
@@ -3016,7 +3024,10 @@ const agentObservationState = {
   observationId: null,
   tabId: null,
   url: "",
-  elements: new Map()
+  elements: new Map(),
+  page: null,
+  ragAttachmentId: null,
+  ragObservationId: null
 };
 
 function getAgentElementFingerprint(element) {
@@ -3040,27 +3051,93 @@ async function observePageForAgent({ signal } = {}) {
   if (!tab?.id) throw new Error("No active browser tab was found.");
 
   const observationId = crypto.randomUUID();
-  const elements = page.interactiveElements.map((element, index) => ({
-    ref: `e${index + 1}`,
+  const prioritizedElements = [...page.interactiveElements]
+    .sort((left, right) =>
+      Number(Boolean(right.inViewport)) - Number(Boolean(left.inViewport)) ||
+      left.index - right.index
+    )
+    .slice(0, AGENT_OBSERVATION_ELEMENT_LIMIT);
+  const elements = prioritizedElements.map((element) => ({
+    ref: `e${element.index}`,
     ...element
   }));
   agentObservationState.observationId = observationId;
   agentObservationState.tabId = tab.id;
   agentObservationState.url = page.page.url;
+  agentObservationState.page = page;
   agentObservationState.elements = new Map(
     elements.map((element) => [element.ref, getAgentElementFingerprint(element)])
   );
 
+  const viewportText = page.visibleText.inViewport.slice(
+    0,
+    AGENT_OBSERVATION_TEXT_LIMIT
+  );
   return {
     observationId,
     page: page.page,
     viewport: page.viewport,
-    visibleText: page.visibleText,
-    headings: page.headings,
+    visibleText: {
+      inViewport: viewportText,
+      truncated:
+        viewportText.length < page.visibleText.inViewport.length ||
+        Boolean(page.visibleText.elsewhereOnPage)
+    },
+    headings: page.headings.filter((heading) => heading.inViewport).slice(0, 20),
     interactiveElements: elements,
-    stats: page.stats,
+    stats: {
+      returnedInteractiveElements: elements.length,
+      totalInteractiveElements: page.stats.interactiveElementCount,
+      returnedTextCharacters: viewportText.length,
+      totalAvailableTextCharacters: page.stats.totalAvailableTextCharacters
+    },
     instruction:
-      "Element references are valid only for this observation. Observe again after navigation or a meaningful page change."
+      "This is a compact action-oriented observation. Element references are valid only for this observation. Use search_page_content for long page text. Observe again after navigation or a meaningful structural change."
+  };
+}
+
+async function searchPageContentForAgent({ query } = {}, { signal } = {}) {
+  signal?.throwIfAborted();
+  const focusedQuery = String(query || "").trim();
+  if (!focusedQuery) throw new Error("A focused page-content query is required.");
+  if (!agentObservationState.page || !agentObservationState.observationId) {
+    throw new Error("Call observe_page before searching page content.");
+  }
+  if (!BrowserChatRag.getSettings().enabled) {
+    throw new Error("Page-content search requires Files & RAG to be enabled.");
+  }
+
+  const ragChatId = `agent-observation:${activeChatId || "temporary"}`;
+  if (agentObservationState.ragObservationId !== agentObservationState.observationId) {
+    if (agentObservationState.ragAttachmentId) {
+      await BrowserChatRag.deleteAttachment(agentObservationState.ragAttachmentId);
+    }
+    const attachment = await BrowserChatRag.indexDom({
+      chatId: ragChatId,
+      page: agentObservationState.page,
+      signal
+    });
+    agentObservationState.ragAttachmentId = attachment.id;
+    agentObservationState.ragObservationId = agentObservationState.observationId;
+  }
+
+  const retrieval = await BrowserChatRag.retrieve(ragChatId, focusedQuery, {
+    signal
+  });
+  return {
+    observationId: agentObservationState.observationId,
+    query: focusedQuery,
+    passages: retrieval.chunks.map((chunk) => ({
+      chunk: chunk.chunkIndex + 1,
+      similarity: Number(chunk.score.toFixed(4)),
+      text: chunk.text
+    })),
+    tokenEstimate: retrieval.tokenEstimate || 0,
+    settings: {
+      finalChunkCount: BrowserChatRag.getSettings().finalChunkCount,
+      maximumContextTokens: BrowserChatRag.getSettings().maximumContextTokens,
+      neighborExpansion: BrowserChatRag.getSettings().neighborExpansion
+    }
   };
 }
 
@@ -3326,6 +3403,7 @@ function waitWithSignal(milliseconds, signal) {
 
 globalThis.BrowserChatAgentRuntime = Object.freeze({
   observe: observePageForAgent,
+  searchPageContent: searchPageContentForAgent,
   fillField: (arguments_, context) =>
     performAgentElementAction("fill", arguments_, context),
   clickElement: (arguments_, context) =>
@@ -3779,6 +3857,90 @@ async function streamChatRound(
   };
 }
 
+function summarizeAgentToolActivity(activity) {
+  const payload = activity.result?.result || {};
+  const summary = {
+    tool: activity.name,
+    status: activity.status
+  };
+  if (activity.arguments?.elementRef) summary.elementRef = activity.arguments.elementRef;
+
+  switch (activity.name) {
+    case "observe_page":
+      summary.observationId = payload.observationId;
+      summary.page = payload.page
+        ? { title: payload.page.title || "", url: payload.page.url || "" }
+        : undefined;
+      summary.returnedInteractiveElements =
+        payload.stats?.returnedInteractiveElements;
+      break;
+    case "search_page_content":
+      summary.observationId = payload.observationId;
+      summary.query = payload.query;
+      summary.retrievedPassages = Array.isArray(payload.passages)
+        ? payload.passages.length
+        : 0;
+      break;
+    case "fill_field":
+      summary.verified = payload.verified;
+      summary.enteredCharacterCount = payload.enteredCharacterCount;
+      break;
+    case "click_element":
+      summary.clicked = payload.clicked;
+      summary.beforeChecked = payload.beforeChecked;
+      summary.afterChecked = payload.afterChecked;
+      break;
+    case "select_option":
+      summary.verified = payload.verified;
+      summary.selectedLabel = payload.selectedLabel;
+      break;
+    case "scroll_page":
+      summary.observationId = payload.observationId;
+      summary.scrollY = payload.viewport?.scrollY;
+      break;
+    case "take_screenshot":
+      summary.captured = payload.captured;
+      summary.pageUrl = payload.pageUrl;
+      break;
+    case "wait_for_page":
+      summary.observationId = payload.observationId;
+      break;
+    default:
+      if (activity.result?.error) summary.error = activity.result.error;
+  }
+  return Object.fromEntries(
+    Object.entries(summary).filter(([, value]) => value !== undefined)
+  );
+}
+
+function replaceAgentRoundContext(
+  messages,
+  baseMessages,
+  responseMessage,
+  results,
+  toolActivities
+) {
+  const recentActions = toolActivities
+    .slice(-AGENT_WORKING_MEMORY_ACTION_LIMIT)
+    .map(summarizeAgentToolActivity);
+  const workingMemory = {
+    actionCount: toolActivities.length,
+    recentActions,
+    instruction:
+      "Only the latest tool exchange is retained below. Earlier full observations and screenshots were intentionally compacted. Use recentActions as execution history and call a context tool when fresh evidence is required."
+  };
+  messages.length = 0;
+  messages.push(
+    ...baseMessages,
+    {
+      role: "system",
+      content: `<agent_working_memory>${JSON.stringify(workingMemory)}</agent_working_memory>`
+    },
+    responseMessage,
+    ...results
+  );
+}
+
 async function runToolCallingLoop(
   messages,
   signal,
@@ -3793,6 +3955,7 @@ async function runToolCallingLoop(
   let combinedThinking = "";
   let displayedContent = "";
   const toolActivities = [];
+  const baseMessages = messages.slice();
 
   const streamFinalAnswer = async () => {
     messages.push({
@@ -3954,7 +4117,13 @@ async function runToolCallingLoop(
         });
       }
     }
-    messages.push(...results);
+    replaceAgentRoundContext(
+      messages,
+      baseMessages,
+      response.message,
+      results,
+      toolActivities
+    );
   }
 }
 

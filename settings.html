@@ -443,7 +443,11 @@ flowchart TD
               <h1>Skills</h1>
               <p>Give Ollama focused instructions for specialized tasks. Skills can be chosen automatically or explicitly from the chat composer.</p>
             </div>
-            <button id="createSkillButton" class="settings-primary-button" type="button">Create skill</button>
+            <div class="skill-header-actions">
+              <button id="importSkillButton" class="settings-secondary-button" type="button">Import Markdown</button>
+              <button id="createSkillButton" class="settings-primary-button" type="button">Create skill</button>
+              <input id="importSkillInput" type="file" accept=".md,text/markdown,text/plain" multiple hidden />
+            </div>
           </header>
 
           <section class="skills-master-card">
@@ -460,6 +464,7 @@ flowchart TD
 
           <div id="skillsList" class="skills-list" aria-live="polite"></div>
           <p id="skillsEmptyState" class="skills-empty-state" hidden>No skills yet. Create one to add specialized instructions.</p>
+          <p id="skillImportStatus" class="skill-import-status" role="status"></p>
 
           <dialog id="skillEditorDialog" class="skill-editor-dialog">
             <form id="skillEditorForm" method="dialog">
@@ -752,7 +757,6 @@ flowchart TD
     <script src="config/system-prompt.js"></script>
     <script src="access/registry.js"></script>
     <script src="skills/registry.js"></script>
-    <script src="skills/defaults/mermaid.js"></script>
     <script src="tools/registry.js"></script>
     <script src="tools/calculator.js"></script>
     <script src="tools/browser.js"></script>

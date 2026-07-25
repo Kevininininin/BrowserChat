@@ -124,33 +124,41 @@ the enabled skill catalog and may select any skill that materially applies.
 Only selected instructions are added to the main system prompt.
 
 Skills can be enabled or bypassed globally from **Settings → Skills**. That page
-also supports creating, editing, and deleting locally stored skills. The
+supports creating local skills, importing and exporting Markdown skills,
+editing built-in skills as local overrides, and deleting local skills. The
 **Agent Runtime** settings diagram mirrors the same toggle and redraws the
 architecture with or without the skill-selection phase.
 
-The built-in Mermaid skill is enabled by default and lives separately from the
-base prompt:
+Built-in skills use canonical Markdown files and live separately from the base
+prompt:
 
 ```text
 skills/
+├── manifest.json
 ├── registry.js
 └── defaults/
-    └── mermaid.js
+    ├── computer-use.md
+    └── mermaid.md
 ```
 
-`registry.js` owns normalization, local persistence, selection messages, and
-effective-prompt composition. Default skill modules register themselves
-independently, while user-created skills are stored in `chrome.storage.local`.
-The default system prompt contains no Mermaid instructions; those instructions
-are attached only when Mermaid is explicitly or implicitly selected.
+Packaged Markdown uses YAML-style frontmatter for `id`, `name`, and
+`description`; the remaining body is the skill instructions. `registry.js`
+owns Markdown parsing and export, discovery, normalization, local overrides,
+selection messages, and effective-prompt composition. User-created and
+imported overrides are stored in `chrome.storage.local` because an installed
+extension cannot modify its packaged files at runtime. Skill instructions are
+attached only when the skill is explicitly or automatically selected.
 
 ## Tools
 
 BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
-`observe_page`, `fill_field`, `click_element`, `select_option`, `scroll_page`,
-`take_screenshot`, and `wait_for_page`. Browser actions use short-lived element references from
-the latest observation, execute sequentially, and require re-observation for
-verification. Password fields and submit-like controls are blocked.
+`observe_page`, `search_page_content`, `fill_field`, `click_element`,
+`select_option`, `scroll_page`, `take_screenshot`, and `wait_for_page`.
+Browser actions use short-lived element references from the latest compact
+observation and execute sequentially. Long page text is retrieved lazily from
+the latest full snapshot through the configured local RAG settings. Superseded
+tool payloads and screenshot images are compacted between model rounds.
+Password fields and submit-like controls are blocked.
 
 Tools are organized by responsibility:
 

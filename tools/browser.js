@@ -34,6 +34,32 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "search_page_content",
+        description:
+          "Retrieve the most relevant text passages from the latest full page snapshot using the configured local RAG settings. Use this for long page content, not for locating controls.",
+        parameters: {
+          type: "object",
+          required: ["query"],
+          properties: {
+            query: {
+              type: "string",
+              description:
+                "A focused semantic query describing the page information needed for the current objective."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().searchPageContent(arguments_, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "fill_field",
         description:
           "Replace the contents of a text input, textarea, or contenteditable element and verify that the value was accepted.",

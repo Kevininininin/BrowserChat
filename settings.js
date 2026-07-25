@@ -8,6 +8,9 @@ const skillElements = {
   list: document.querySelector("#skillsList"),
   emptyState: document.querySelector("#skillsEmptyState"),
   createButton: document.querySelector("#createSkillButton"),
+  importButton: document.querySelector("#importSkillButton"),
+  importInput: document.querySelector("#importSkillInput"),
+  importStatus: document.querySelector("#skillImportStatus"),
   dialog: document.querySelector("#skillEditorDialog"),
   form: document.querySelector("#skillEditorForm"),
   title: document.querySelector("#skillEditorTitle"),
@@ -979,12 +982,23 @@ function renderSkills() {
         <svg viewBox="0 0 24 24"><path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/><path d="m5 7 7 4 7-4M12 11v10"/></svg>
       </div>
       <div class="skill-card-copy">
-        <strong>${escapeHtml(skill.name)}</strong>
+        <strong>${escapeHtml(skill.name)}<span class="skill-source-badge">${
+          skill.overridesPackaged
+            ? "Override"
+            : skill.source === "packaged"
+              ? "Built-in MD"
+              : "Local"
+        }</span></strong>
         <p>${escapeHtml(skill.description || "No description")}</p>
       </div>
       <div class="skill-card-actions">
+        <button type="button" data-export-skill="${escapeHtml(skill.id)}">Export .md</button>
         <button type="button" data-edit-skill="${escapeHtml(skill.id)}">Edit</button>
-        <button class="destructive" type="button" data-delete-skill="${escapeHtml(skill.id)}">Delete</button>
+        ${
+          skill.source === "packaged"
+            ? ""
+            : `<button class="destructive" type="button" data-delete-skill="${escapeHtml(skill.id)}">${skill.overridesPackaged ? "Reset" : "Delete"}</button>`
+        }
       </div>
     </article>
   `).join("");
@@ -1028,12 +1042,91 @@ skillElements.architectureToggle.addEventListener("change", () => {
   void updateSkillsEnabled(skillElements.architectureToggle.checked);
 });
 skillElements.createButton.addEventListener("click", () => openSkillEditor());
+skillElements.importButton.addEventListener("click", () => {
+  skillElements.importInput.click();
+});
+skillElements.importInput.addEventListener("change", async () => {
+  const files = [...(skillElements.importInput.files || [])];
+  skillElements.importInput.value = "";
+  if (!files.length) return;
+  skillElements.importButton.disabled = true;
+  skillElements.importStatus.textContent = "Reading skill Markdown…";
+  try {
+    const imported = await Promise.all(files.map(async (file) =>
+      BrowserChatSkills.parseMarkdown(await file.text(), { source: "local" })
+    ));
+    const conflicts = imported.filter((candidate) =>
+      skills.some((skill) =>
+        skill.id === candidate.id ||
+        skill.name.toLocaleLowerCase() === candidate.name.toLocaleLowerCase()
+      )
+    );
+    if (
+      conflicts.length &&
+      !window.confirm(
+        `Replace ${conflicts.map((skill) => `“${skill.name}”`).join(", ")} with the imported Markdown?`
+      )
+    ) {
+      skillElements.importStatus.textContent = "Import cancelled.";
+      return;
+    }
+    for (const candidate of imported) {
+      const existingIndex = skills.findIndex((skill) =>
+        skill.id === candidate.id ||
+        skill.name.toLocaleLowerCase() === candidate.name.toLocaleLowerCase()
+      );
+      const next = BrowserChatSkills.normalizeSkill({
+        ...candidate,
+        id: existingIndex >= 0 ? skills[existingIndex].id : candidate.id,
+        source: "local",
+        sourcePath: existingIndex >= 0 ? skills[existingIndex].sourcePath : "",
+        overridesPackaged:
+          existingIndex >= 0 &&
+          (skills[existingIndex].source === "packaged" ||
+            skills[existingIndex].overridesPackaged),
+        createdAt:
+          existingIndex >= 0 ? skills[existingIndex].createdAt : Date.now(),
+        updatedAt: Date.now()
+      });
+      if (existingIndex >= 0) skills.splice(existingIndex, 1, next);
+      else skills.push(next);
+    }
+    skills = await BrowserChatSkills.saveSkills(skills);
+    renderSkills();
+    skillElements.importStatus.textContent =
+      `Imported ${imported.length} Markdown ${imported.length === 1 ? "skill" : "skills"}.`;
+  } catch (error) {
+    skillElements.importStatus.textContent =
+      error instanceof Error ? error.message : String(error);
+  } finally {
+    skillElements.importButton.disabled = false;
+  }
+});
 skillElements.closeButton.addEventListener("click", closeSkillEditor);
 skillElements.cancelButton.addEventListener("click", closeSkillEditor);
 skillElements.dialog.addEventListener("click", (event) => {
   if (event.target === skillElements.dialog) closeSkillEditor();
 });
 skillElements.list.addEventListener("click", async (event) => {
+  const exportButton = event.target.closest("[data-export-skill]");
+  if (exportButton) {
+    const skill = skills.find(
+      (item) => item.id === exportButton.dataset.exportSkill
+    );
+    if (!skill) return;
+    const blob = new Blob([BrowserChatSkills.toMarkdown(skill)], {
+      type: "text/markdown"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${skill.id.replace(/[^a-z0-9-]+/gi, "-") || "skill"}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+    skillElements.importStatus.textContent = `Exported “${skill.name}”.`;
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit-skill]");
   if (editButton) {
     openSkillEditor(skills.find((skill) => skill.id === editButton.dataset.editSkill));
@@ -1043,11 +1136,15 @@ skillElements.list.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest("[data-delete-skill]");
   if (!deleteButton) return;
   const skill = skills.find((item) => item.id === deleteButton.dataset.deleteSkill);
-  if (!skill || !window.confirm(`Delete the “${skill.name}” skill?`)) return;
+  const action = skill?.overridesPackaged ? "Reset" : "Delete";
+  if (!skill || !window.confirm(`${action} the “${skill.name}” skill?`)) return;
   skills = await BrowserChatSkills.saveSkills(
     skills.filter((item) => item.id !== skill.id)
   );
-  renderSkills();
+  await loadSkillsSettings();
+  skillElements.importStatus.textContent = skill.overridesPackaged
+    ? `Reset “${skill.name}” to its packaged Markdown.`
+    : `Deleted “${skill.name}”.`;
 });
 skillElements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1059,6 +1156,9 @@ skillElements.form.addEventListener("submit", async (event) => {
     name: skillElements.nameInput.value,
     description: skillElements.descriptionInput.value,
     instructions: skillElements.instructionsInput.value,
+    source: "local",
+    overridesPackaged:
+      existing?.source === "packaged" || existing?.overridesPackaged,
     createdAt: existing?.createdAt || now,
     updatedAt: now
   });

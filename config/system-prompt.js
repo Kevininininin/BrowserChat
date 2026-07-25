@@ -19,7 +19,7 @@
     missingInformationInstruction:
       "If the requested information is not present, say so plainly.",
     toolInstruction:
-      "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. For browser actions, call observe_page first, use only element references from its latest result, perform one action at a time, and observe again to verify the result. Use take_screenshot only when visual information is needed and inspect its attached image in the following round. Never claim an action succeeded without tool evidence. Submit-like controls and password fields are intentionally blocked.",
+      "You have tools available and may call them across multiple rounds. Use the calculate tool for arithmetic. For browser actions, call observe_page first, use only element references from its latest result, and perform one action at a time. Treat an action tool's structured result as the first verification signal; observe again only after navigation, a meaningful structural change, a stale reference, or insufficient evidence. Use search_page_content for relevant long-form text from the latest snapshot. Use take_screenshot only when visual information is necessary. Never claim an action succeeded without tool evidence. Submit-like controls and password fields are intentionally blocked.",
     skillInstruction:
       "Skills are prompt instructions that have already been applied to this response. They are not tools or functions. Follow any attached skill instructions directly, and never request a tool named skill or use a skill name as a tool call.",
     markdownInstruction:
