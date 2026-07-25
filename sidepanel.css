@@ -1686,21 +1686,41 @@ select {
 }
 
 .cloud-model-banner {
+  display: grid;
+  align-items: flex-start;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 9px;
   background: #f6f2ff;
   border-color: #dfd5fa;
 }
 
+.cloud-model-banner .site-access-copy {
+  grid-column: 2;
+}
+
+.cloud-model-banner .site-access-copy strong,
+.cloud-model-banner .site-access-copy span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .cloud-model-banner .site-access-icon {
+  grid-column: 1;
+  margin-right: 0;
   color: #7255b8;
   border-color: rgb(114 85 184 / 16%);
 }
 
 .cloud-model-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  grid-column: 2;
   gap: 6px;
-  margin-left: 10px;
+  min-width: 0;
+  margin-top: 8px;
 }
 
 .cloud-model-actions .allow-site-button {
@@ -1802,6 +1822,9 @@ select {
 }
 
 .error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   max-width: 720px;
   margin: 0 auto 8px;
   padding: 9px 11px;
@@ -1811,6 +1834,44 @@ select {
   background: var(--danger-bg);
   border: 1px solid #f1d5d2;
   border-radius: 10px;
+}
+
+.error-banner[hidden] {
+  display: none;
+}
+
+.error-banner > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dismiss-error-button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -3px -4px -3px 0;
+  padding: 0;
+  color: currentColor;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dismiss-error-button:hover {
+  background: rgb(143 39 31 / 8%);
+}
+
+.dismiss-error-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
 }
 
 .composer {
@@ -3106,14 +3167,8 @@ select {
     max-width: 160px;
   }
 
-  .cloud-model-banner {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
   .cloud-model-actions {
-    width: 100%;
-    margin: 2px 0 0 41px;
+    margin-top: 2px;
   }
 
   .context-preview-dialog {

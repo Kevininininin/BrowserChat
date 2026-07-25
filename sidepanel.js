@@ -86,6 +86,8 @@ const elements = {
   chipConfigureButton: document.querySelector("#chipConfigureButton"),
   removeContextButton: document.querySelector("#removeContextButton"),
   errorBanner: document.querySelector("#errorBanner"),
+  errorBannerMessage: document.querySelector("#errorBannerMessage"),
+  dismissErrorButton: document.querySelector("#dismissErrorButton"),
   connectionDot: document.querySelector("#connectionDot"),
   chatPickerButton: document.querySelector("#chatPickerButton"),
   chatMenu: document.querySelector("#chatMenu"),
@@ -808,7 +810,7 @@ async function initializeChats() {
 }
 
 function setError(message = "") {
-  elements.errorBanner.textContent = message;
+  elements.errorBannerMessage.textContent = message;
   elements.errorBanner.hidden = !message;
 }
 
@@ -3041,8 +3043,11 @@ async function loadModels() {
     elements.modelSelect.replaceChildren(new Option("Ollama unavailable", ""));
     elements.cloudModelBanner.hidden = true;
     setConnectionStatus("offline", "Could not connect to Ollama");
+    const message = error?.message || "";
     setError(
-      "Couldn’t connect to Ollama. Start it with Chrome-extension origins enabled, then reopen this panel."
+      message.includes("HTTP 403")
+        ? getOllamaErrorMessage(error)
+        : "Couldn’t connect to Ollama. Start it with Chrome-extension origins enabled, then reopen this panel."
     );
   } finally {
     updateSendButton();
@@ -3097,9 +3102,18 @@ async function acceptCloudPrivacy() {
 
 function getOllamaErrorMessage(error, model = elements.modelSelect.value) {
   const message = error?.message || "Something went wrong.";
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("http 403") &&
+    normalized.includes("ollama cloud is disabled")
+  ) {
+    return "Ollama Cloud is disabled, so the remote model is unavailable. Open the Ollama app, enable cloud models in Settings, and try again.";
+  }
+  if (normalized.includes("http 403")) {
+    return "Ollama returned HTTP 403. Confirm that the Ollama server is active and that you started it with OLLAMA_ORIGINS=\"chrome-extension://*\" ollama serve, then try again.";
+  }
   if (!isCloudModel(model)) return message;
 
-  const normalized = message.toLowerCase();
   if (
     normalized.includes("sign in") ||
     normalized.includes("signin") ||
@@ -7125,6 +7139,8 @@ elements.cloudModelSecondaryButton.addEventListener("click", () => {
     void checkCloudModelAgain();
   }
 });
+
+elements.dismissErrorButton.addEventListener("click", () => setError(""));
 
 elements.thinkingSelect.addEventListener("change", async () => {
   await chrome.storage.local.set({
