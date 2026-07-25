@@ -175,6 +175,7 @@ let currentSite = {
   tabId: null,
   windowId: null,
   pageUrl: "",
+  tabTitle: "",
   faviconUrl: "",
   hostname: "",
   originPattern: "",
@@ -299,8 +300,8 @@ function normalizeObjectivePredicate(predicate = {}) {
 function normalizeObjectivePlan(value) {
   if (!value || typeof value !== "object") return null;
   const rawObjectives = Array.isArray(value.objectives) ? value.objectives : [];
-  const objectives = rawObjectives.slice(0, 8).map((objective, index) => {
-    const status = ["pending", "active", "completed", "blocked"].includes(
+  const objectives = rawObjectives.slice(0, 12).map((objective, index) => {
+    const status = ["pending", "active", "completed", "blocked", "revised"].includes(
       objective?.status
     )
       ? objective.status
@@ -363,11 +364,14 @@ function renderObjectivePlan(plan = getActiveChat()?.objectivePlan) {
     elements.objectiveList.replaceChildren();
     return;
   }
-  const completed = normalized.objectives.filter(
+  const currentObjectives = normalized.objectives.filter(
+    (objective) => objective.status !== "revised"
+  );
+  const completed = currentObjectives.filter(
     (objective) => objective.status === "completed"
   ).length;
   elements.objectivePanelProgress.textContent =
-    `${completed}/${normalized.objectives.length}`;
+    `${completed}/${currentObjectives.length}`;
   elements.objectivePanelGoal.textContent = normalized.goal;
   elements.objectiveList.replaceChildren(
     ...normalized.objectives.map((objective) => {
@@ -1649,6 +1653,11 @@ function getToolActivityCopy(toolName, status) {
       completed: "Calculated",
       failed: "Calculation failed"
     },
+    get_current_website: {
+      running: "Checking current website…",
+      completed: "Checked current website",
+      failed: "Website check failed"
+    },
     observe_page: {
       running: "Observing page…",
       completed: "Observed page",
@@ -2443,6 +2452,7 @@ function getSiteDetails(tab) {
       tabId: tab?.id || null,
       windowId: tab?.windowId ?? null,
       pageUrl: tab?.url || "",
+      tabTitle: tab?.title || "",
       faviconUrl: getFaviconUrl(tab),
       hostname: "",
       originPattern: "",
@@ -2458,6 +2468,7 @@ function getSiteDetails(tab) {
         tabId: tab.id,
         windowId: tab.windowId ?? null,
         pageUrl: tab.url,
+        tabTitle: tab.title || "",
         faviconUrl: getFaviconUrl(tab),
         hostname: url.protocol.replace(":", "") || "this page",
         originPattern: "",
@@ -2470,6 +2481,7 @@ function getSiteDetails(tab) {
       tabId: tab.id,
       windowId: tab.windowId ?? null,
       pageUrl: tab.url,
+      tabTitle: tab.title || "",
       faviconUrl: getFaviconUrl(tab),
       hostname: url.hostname,
       originPattern: `${url.protocol}//${url.host}/*`,
@@ -2481,6 +2493,7 @@ function getSiteDetails(tab) {
       tabId: tab.id,
       windowId: tab.windowId ?? null,
       pageUrl: tab.url || "",
+      tabTitle: tab.title || "",
       faviconUrl: getFaviconUrl(tab),
       hostname: "",
       originPattern: "",
@@ -2584,8 +2597,9 @@ async function refreshSiteAccess(preferredTabId = null) {
     currentSite = {
       tabId: null,
       windowId: null,
-      pageUrl: "",
-      faviconUrl: "",
+    pageUrl: "",
+    tabTitle: "",
+    faviconUrl: "",
       hostname: "",
       originPattern: "",
       hasAccess: false,
@@ -4086,6 +4100,19 @@ function waitWithSignal(milliseconds, signal) {
 }
 
 globalThis.BrowserChatAgentRuntime = Object.freeze({
+  async getCurrentWebsite(_arguments, { signal } = {}) {
+    signal?.throwIfAborted();
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true
+    });
+    signal?.throwIfAborted();
+    if (!tab) throw new Error("BrowserChat could not identify the active tab.");
+    return {
+      url: tab.url || "",
+      title: tab.title || ""
+    };
+  },
   observe: observePageForAgent,
   findInteractiveElements: findInteractiveElementsForAgent,
   searchCapturedPageText: searchCapturedPageTextForAgent,
@@ -4117,6 +4144,10 @@ function buildOllamaMessages(
   const baseSystemPrompt = BrowserChatPromptConfig.buildSystemPrompt({
     corePrompt: userSystemPrompt,
     page: legacyPage,
+    site: {
+      url: currentSite.pageUrl || "",
+      title: currentSite.tabTitle || ""
+    },
     settings: userPromptSettings
   });
   const systemPrompt = BrowserChatSkills.composeSystemPrompt(
@@ -4236,6 +4267,7 @@ async function createObjectivePlan(
   const user = {
     request: prompt,
     currentUrl: currentSite.pageUrl || "",
+    currentTabTitle: currentSite.tabTitle || "",
     ...(previousPlan ? { previousPlan } : {}),
     ...(evidence ? { latestEvidence: evidence } : {})
   };
@@ -4265,19 +4297,37 @@ async function createObjectivePlan(
     });
     if (!normalized) return previousPlan;
     if (previousPlan) {
-      const completedById = new Map(
-        previousPlan.objectives
-          .filter((objective) => objective.status === "completed")
-          .map((objective) => [objective.id, objective])
+      const completedObjectives = previousPlan.objectives.filter(
+        (objective) => objective.status === "completed"
       );
-      for (const objective of normalized.objectives) {
-        const completed = completedById.get(objective.id);
-        if (!completed) continue;
-        objective.status = "completed";
-        objective.evidence = completed.evidence;
-        completedById.delete(objective.id);
-      }
-      normalized.objectives.unshift(...completedById.values());
+      const revisionHistory = previousPlan.objectives
+        .filter((objective) => objective.status === "revised")
+        .map((objective) => ({ ...objective }));
+      const newlyRevised = previousPlan.objectives
+        .filter((objective) =>
+          ["pending", "active", "blocked"].includes(objective.status)
+        )
+        .map((objective) => ({
+          ...objective,
+          status: "revised",
+          evidence: {
+            ...(objective.evidence || {}),
+            reason: objective.evidence?.reason || "Replaced during replanning."
+          }
+        }));
+      const completedIds = new Set(
+        completedObjectives.map((objective) => objective.id)
+      );
+      const replacementObjectives = normalized.objectives.filter(
+        (objective) =>
+          objective.status !== "completed" && !completedIds.has(objective.id)
+      );
+      normalized.objectives = [
+        ...completedObjectives,
+        ...revisionHistory,
+        ...newlyRevised,
+        ...replacementObjectives
+      ].slice(0, 12);
       if (!getActiveObjective(normalized)) activateNextObjective(normalized);
     }
     return normalized;
@@ -5349,6 +5399,7 @@ async function submitPrompt(prompt) {
 
   const chatId = activeChatId;
   await rememberSentSiteForChat(chatId);
+  await refreshSiteAccess();
   const taskChat = chats.find((item) => item.id === chatId);
   if (taskChat) {
     taskChat.objectivePlan = null;

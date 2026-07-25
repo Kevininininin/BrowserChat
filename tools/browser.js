@@ -15,6 +15,25 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "get_current_website",
+        description:
+          "Return the URL and tab title of the website currently active in the browser. Use this to re-check where you are operating without capturing the page.",
+        parameters: {
+          type: "object",
+          properties: {}
+        }
+      }
+    },
+    execute(_arguments, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().getCurrentWebsite(_arguments, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "observe_page",
         description:
           "Inspect the active webpage and return its visible text and interactive elements. Call this before acting and again after the page changes.",
