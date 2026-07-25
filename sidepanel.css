@@ -2644,8 +2644,13 @@ select {
 }
 
 .model-chip {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   margin-left: auto;
+}
+
+.model-chip select {
+  width: max-content;
+  max-width: none;
 }
 
 .thinking-chip select {
@@ -3153,10 +3158,6 @@ select {
 
   .chat-picker-button {
     max-width: calc(100vw - 48px);
-  }
-
-  .model-chip select {
-    max-width: 88px;
   }
 
   .conversation {
