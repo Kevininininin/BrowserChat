@@ -198,6 +198,36 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "press_key",
+        description:
+          "Focus an observed interactive element and press one non-text keyboard key. Use Enter to finish a search or accept a focused menu choice after filling a field.",
+        parameters: {
+          type: "object",
+          required: ["elementRef", "key"],
+          properties: {
+            elementRef: elementRefProperty,
+            key: {
+              type: "string",
+              enum: [
+                "Enter", "Escape", "Tab", "Space", "ArrowUp", "ArrowDown",
+                "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"
+              ],
+              description: "The keyboard key to press."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().pressKey(arguments_, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "select_option",
         description:
           "Select one option in a native HTML select element and verify the selection.",
