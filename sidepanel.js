@@ -6163,16 +6163,26 @@ async function runToolCallingLoop(
     answerNowSignal?.addEventListener("abort", cancelRound, { once: true });
 
     let response;
+    const streamAsObjectiveEvaluation = Boolean(
+      getActiveObjective(objectivePlan)
+    );
     try {
       response = await streamChatRound(messages, roundController.signal, {
         onThinking: streamRoundThinking,
         onContent: (content, thinking) => {
-          onStepContent?.({
-            ...(toolActivities.at(-1) || getObjectiveContext(objectivePlan)),
-            content,
-            thinking,
-            streaming: true
-          });
+          if (streamAsObjectiveEvaluation) {
+            onStepContent?.({
+              ...(toolActivities.at(-1) || getObjectiveContext(objectivePlan)),
+              content,
+              thinking,
+              streaming: true
+            });
+            return;
+          }
+          onContent(
+            [displayedContent, content].filter(Boolean).join("\n\n"),
+            [combinedThinking, thinking].filter(Boolean).join("\n\n")
+          );
         }
       });
     } catch (error) {
