@@ -160,11 +160,17 @@ attached only when the skill is explicitly or automatically selected.
 ## Tools
 
 BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
-`observe_page`, `search_captured_page_text`, `fill_field`, `click_element`,
-`select_option`, `scroll_page`, `take_screenshot`, and `wait_for_page`.
+`observe_page`, `find_interactive_elements`, `search_captured_page_text`,
+`fill_field`, `click_element`, `select_option`, `scroll_page`,
+`take_screenshot`, and `wait_for_page`.
 Browser actions use short-lived element references from the latest compact
 observation and execute sequentially. `fill_field` can safely submit recognized
-search fields and return the resulting observation. Long page text is retrieved
+search fields and return the resulting observation. Clicks report navigation,
+control-state, or DOM effects and include a post-click observation. Browser
+tasks receive a structured objective plan with deterministic URL and control
+predicates, bounded retries, and conditional replanning. The current plan is
+shown above the conversation with completed, active, pending, and blocked
+states. Long page text is retrieved
 lazily from the latest captured snapshot through the configured local RAG
 settings; this snapshot search never performs a website search or navigation.
 Superseded tool payloads and screenshot images are compacted between model

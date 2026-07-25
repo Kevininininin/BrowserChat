@@ -34,6 +34,42 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "find_interactive_elements",
+        description:
+          "Find actionable controls in the current captured snapshot by visible label, name, or destination. Use this when the desired control text is known but its element reference is unclear. This does not recapture the page.",
+        parameters: {
+          type: "object",
+          required: ["query"],
+          properties: {
+            query: {
+              type: "string",
+              description: "Exact or approximate visible text of the desired control."
+            },
+            scope: {
+              type: "string",
+              enum: ["viewport", "page"],
+              description: "Search visible controls only or all controls in the captured snapshot."
+            },
+            maxResults: {
+              type: "number",
+              minimum: 1,
+              maximum: 12,
+              description: "Maximum matches to return. Defaults to 8."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().findInteractiveElements(arguments_, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "search_captured_page_text",
         description:
           "Search only the latest captured page snapshot for relevant text passages using local RAG. This does not submit a website search, navigate, refresh results, or access new web content.",

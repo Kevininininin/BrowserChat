@@ -428,7 +428,8 @@ flowchart TD
     E -- Yes --> F["Load selected skill instructions"]
     F --> G["Compose effective system prompt"]
     G --> H
-    H --> B["Build system, history, context, and user messages"]
+    H --> OP["Create structured objective plan for browser tasks"]
+    OP --> B["Build system, history, context, and user messages"]
     B --> I["Attach registered tool schemas"]
     I --> J["Send messages and tools to Ollama"]
     J --> K{"Did Ollama request tools?"}
@@ -438,7 +439,13 @@ flowchart TD
     P -- No --> Q["Record unsupported tool request"]
     Q --> O
     P -- Yes --> N["Execute tool function"]
-    N --> O["Append role: tool result messages"]
+    N --> EV{"Active objective predicates satisfied?"}
+    EV -- Yes --> AV["Record evidence and activate next objective"]
+    EV -- No --> RB{"Retry budget exhausted?"}
+    RB -- Yes --> RP["Replan remaining objectives or mark blocked"]
+    RB -- No --> O
+    AV --> O["Append role: tool result messages"]
+    RP --> O
     O --> J
 
     classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
@@ -447,9 +454,9 @@ flowchart TD
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
     class U,A,W,D input
-    class S,F,G skill
-    class C,R,E,H,B,I,J,K,P model
-    class V,DB,X,Y,M,N,O,Q tool
+    class S,F,G,OP skill
+    class C,R,E,H,B,I,J,K,P,EV,RB model
+    class V,DB,X,Y,M,N,O,Q,AV,RP tool
     class L output
 `;
 

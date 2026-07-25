@@ -16,7 +16,7 @@ const AUTO_SCROLL_BOTTOM_THRESHOLD = 24;
 const MERMAID_RENDER_DELAY = 160;
 const CONTEXT_LIMITS = {
   headings: 60,
-  interactiveElements: 120,
+  interactiveElements: 400,
   optionsPerControl: 30,
   totalOptions: 200
 };
@@ -90,6 +90,11 @@ const elements = {
   chatList: document.querySelector("#chatList"),
   currentChatFavicon: document.querySelector("#currentChatFavicon"),
   currentChatTitle: document.querySelector("#currentChatTitle"),
+  objectivePanel: document.querySelector("#objectivePanel"),
+  objectivePanelToggle: document.querySelector("#objectivePanelToggle"),
+  objectivePanelProgress: document.querySelector("#objectivePanelProgress"),
+  objectivePanelGoal: document.querySelector("#objectivePanelGoal"),
+  objectiveList: document.querySelector("#objectiveList"),
   newChatButton: document.querySelector("#newChatButton"),
   settingsButton: document.querySelector("#settingsButton"),
   siteAccessBanner: document.querySelector("#siteAccessBanner"),
@@ -188,6 +193,7 @@ function createChat() {
     pageUrl: "",
     faviconUrl: "",
     hostname: "",
+    objectivePlan: null,
     conversationModel: null,
     domTextLimitOverride: null,
     domCaptureMode: "fullPage",
@@ -262,6 +268,7 @@ function normalizeStoredChat(chat) {
               : ""
           }
         : null,
+    objectivePlan: normalizeObjectivePlan(chat?.objectivePlan),
     messages: Array.isArray(chat?.messages)
       ? chat.messages.filter((message) =>
           ["user", "assistant"].includes(message?.role) &&
@@ -270,6 +277,124 @@ function normalizeStoredChat(chat) {
       : []
   };
 }
+
+function normalizeObjectivePredicate(predicate = {}) {
+  const allowedTypes = new Set([
+    "url_host_equals",
+    "url_contains",
+    "url_path_contains",
+    "page_text_contains",
+    "control_checked",
+    "control_selected"
+  ]);
+  const type = allowedTypes.has(predicate?.type) ? predicate.type : "";
+  if (!type) return null;
+  return {
+    type,
+    value: typeof predicate.value === "string" ? predicate.value.trim() : "",
+    query: typeof predicate.query === "string" ? predicate.query.trim() : ""
+  };
+}
+
+function normalizeObjectivePlan(value) {
+  if (!value || typeof value !== "object") return null;
+  const rawObjectives = Array.isArray(value.objectives) ? value.objectives : [];
+  const objectives = rawObjectives.slice(0, 8).map((objective, index) => {
+    const status = ["pending", "active", "completed", "blocked"].includes(
+      objective?.status
+    )
+      ? objective.status
+      : "pending";
+    return {
+      id:
+        typeof objective?.id === "string" && objective.id.trim()
+          ? objective.id.trim().slice(0, 80)
+          : `objective_${index + 1}`,
+      description:
+        typeof objective?.description === "string" &&
+        objective.description.trim()
+          ? objective.description.trim().slice(0, 280)
+          : `Complete step ${index + 1}`,
+      status,
+      predicates: (Array.isArray(objective?.predicates)
+        ? objective.predicates
+        : []
+      )
+        .map(normalizeObjectivePredicate)
+        .filter(Boolean)
+        .slice(0, 6),
+      attempts: Math.max(0, Number(objective?.attempts) || 0),
+      noProgressCount: Math.max(0, Number(objective?.noProgressCount) || 0),
+      maxAttempts: Math.min(
+        8,
+        Math.max(2, Number(objective?.maxAttempts) || 4)
+      ),
+      evidence:
+        objective?.evidence && typeof objective.evidence === "object"
+          ? objective.evidence
+          : null
+    };
+  });
+  if (!objectives.length) return null;
+  if (!objectives.some((objective) => objective.status === "active")) {
+    const next = objectives.find((objective) => objective.status === "pending");
+    if (next) next.status = "active";
+  }
+  return {
+    goal:
+      typeof value.goal === "string" && value.goal.trim()
+        ? value.goal.trim().slice(0, 320)
+        : "Complete the requested browser task",
+    objectives,
+    replanCount: Math.max(0, Number(value.replanCount) || 0),
+    createdAt: Number(value.createdAt) || Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function getActiveObjective(plan) {
+  return plan?.objectives?.find((objective) => objective.status === "active") || null;
+}
+
+function renderObjectivePlan(plan = getActiveChat()?.objectivePlan) {
+  const normalized = normalizeObjectivePlan(plan);
+  elements.objectivePanel.hidden = !normalized;
+  if (!normalized) {
+    elements.objectiveList.replaceChildren();
+    return;
+  }
+  const completed = normalized.objectives.filter(
+    (objective) => objective.status === "completed"
+  ).length;
+  elements.objectivePanelProgress.textContent =
+    `${completed}/${normalized.objectives.length}`;
+  elements.objectivePanelGoal.textContent = normalized.goal;
+  elements.objectiveList.replaceChildren(
+    ...normalized.objectives.map((objective) => {
+      const item = document.createElement("li");
+      item.className = `objective-item ${objective.status}`;
+      const icon = document.createElement("span");
+      icon.className = "objective-status-icon";
+      icon.setAttribute("aria-hidden", "true");
+      const description = document.createElement("span");
+      description.className = "objective-item-description";
+      description.textContent = objective.description;
+      const attempts = document.createElement("span");
+      attempts.className = "objective-item-attempts";
+      attempts.textContent = objective.attempts
+        ? `${objective.attempts}/${objective.maxAttempts}`
+        : "";
+      item.append(icon, description, attempts);
+      return item;
+    })
+  );
+}
+
+elements.objectivePanelToggle.addEventListener("click", () => {
+  const expanded =
+    elements.objectivePanelToggle.getAttribute("aria-expanded") !== "false";
+  elements.objectivePanelToggle.setAttribute("aria-expanded", String(!expanded));
+});
 
 function getFallbackFaviconUrl() {
   return chrome.runtime.getURL("assets/icon-32.png");
@@ -421,6 +546,7 @@ function renderChatMenu() {
 
 function renderCurrentConversation() {
   shouldAutoScrollConversation = true;
+  renderObjectivePlan();
   elements.conversation.querySelectorAll(".message-row").forEach((node) => node.remove());
   elements.emptyState.hidden = chatHistory.length > 0;
   for (const [index, message] of chatHistory.entries()) {
@@ -467,6 +593,7 @@ async function switchToChat(chatId) {
   setError("");
   renderChatHeader();
   renderChatMenu();
+  renderObjectivePlan(chat.objectivePlan);
   renderCurrentConversation();
   setChatMenu(false);
   await persistChats();
@@ -1532,6 +1659,11 @@ function getToolActivityCopy(toolName, status) {
       completed: "Searched captured page text",
       failed: "Captured page text search failed"
     },
+    find_interactive_elements: {
+      running: "Finding interactive elements…",
+      completed: "Found interactive elements",
+      failed: "Interactive element search failed"
+    },
     fill_field: {
       running: "Filling field…",
       completed: "Filled field",
@@ -1830,6 +1962,7 @@ function buildResponseTrace(content, options = {}) {
       initial: options.initialThinking || "",
       combined: options.thinking || ""
     },
+    objectivePlan: options.objectivePlan || null,
     toolCalls: (options.toolActivities || []).map((activity, index) => ({
       sequence: index + 1,
       id: activity.id || null,
@@ -2778,8 +2911,8 @@ async function captureActivePageContext(
       rootTagName: captureConfiguration?.selectedElement?.tagName || ""
     }],
     func: (limits) => {
-      const normalize = (value = "") =>
-        String(value).replace(/\s+/g, " ").trim();
+      const normalize = (value) =>
+        String(value ?? "").replace(/\s+/g, " ").trim();
 
       const clip = (value, length = 240) => {
         const text = normalize(value);
@@ -3104,6 +3237,11 @@ async function captureActivePageContext(
             if (checked !== null) item.checked = checked;
           }
 
+          const selected = element.getAttribute("aria-selected");
+          if (selected !== null) item.selected = selected === "true";
+          const pressed = element.getAttribute("aria-pressed");
+          if (pressed !== null) item.pressed = pressed === "true";
+
           if (element.matches("[role='slider']")) {
             for (const attribute of ["aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext"]) {
               const value = normalize(element.getAttribute(attribute));
@@ -3204,6 +3342,7 @@ const agentObservationState = {
   url: "",
   elements: new Map(),
   page: null,
+  stateSignature: "",
   ragAttachmentId: null,
   ragObservationId: null
 };
@@ -3218,7 +3357,43 @@ function getAgentElementFingerprint(element) {
   };
 }
 
-async function observePageForAgent({ signal } = {}) {
+function getObjectiveSearchText(objective) {
+  return [
+    objective?.description,
+    ...(objective?.predicates || []).flatMap((predicate) => [
+      predicate.query,
+      predicate.value
+    ])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
+function scoreElementForObjective(element, objective) {
+  const objectiveText = getObjectiveSearchText(objective);
+  if (!objectiveText) return 0;
+  const label = String(element.label || "").toLocaleLowerCase();
+  const name = String(element.name || "").toLocaleLowerCase();
+  const href = String(element.href || "").toLocaleLowerCase();
+  const elementText = `${label} ${name} ${href}`;
+  const terms = [...new Set(
+    objectiveText.split(/[^a-z0-9]+/).filter((term) => term.length > 2)
+  )];
+  let score = 0;
+  if (label && objectiveText.includes(label)) score += 12;
+  if (label && label.includes(objectiveText)) score += 10;
+  for (const term of terms) {
+    if (label.includes(term)) score += 4;
+    else if (name.includes(term)) score += 2;
+    else if (href.includes(term)) score += 1;
+  }
+  if (element.disabled) score -= 5;
+  if (elementText.trim() && element.inViewport) score += 1;
+  return score;
+}
+
+async function observePageForAgent({ signal, objective = null } = {}) {
   signal?.throwIfAborted();
   const page = await captureActivePageContext(
     getEffectiveDomTextLimit(),
@@ -3229,11 +3404,20 @@ async function observePageForAgent({ signal } = {}) {
   if (!tab?.id) throw new Error("No active browser tab was found.");
 
   const observationId = crypto.randomUUID();
+  const stateSignature = getAgentPageStateSignature(page);
+  const changedSincePreviousObservation =
+    !agentObservationState.stateSignature ||
+    agentObservationState.stateSignature !== stateSignature;
   const prioritizedElements = [...page.interactiveElements]
-    .sort((left, right) =>
-      Number(Boolean(right.inViewport)) - Number(Boolean(left.inViewport)) ||
-      left.index - right.index
-    )
+    .sort((left, right) => {
+      const scoreDifference =
+        scoreElementForObjective(right, objective) -
+        scoreElementForObjective(left, objective);
+      return scoreDifference ||
+        Number(Boolean(right.inViewport)) - Number(Boolean(left.inViewport)) ||
+        Number(Boolean(left.disabled)) - Number(Boolean(right.disabled)) ||
+        left.index - right.index;
+    })
     .slice(0, AGENT_OBSERVATION_ELEMENT_LIMIT);
   const elements = prioritizedElements.map((element) => ({
     ref: `e${element.index}`,
@@ -3243,6 +3427,7 @@ async function observePageForAgent({ signal } = {}) {
   agentObservationState.tabId = tab.id;
   agentObservationState.url = page.page.url;
   agentObservationState.page = page;
+  agentObservationState.stateSignature = stateSignature;
   agentObservationState.elements = new Map(
     elements.map((element) => [element.ref, getAgentElementFingerprint(element)])
   );
@@ -3253,6 +3438,7 @@ async function observePageForAgent({ signal } = {}) {
   );
   return {
     observationId,
+    changedSincePreviousObservation,
     page: page.page,
     viewport: page.viewport,
     visibleText: {
@@ -3270,7 +3456,104 @@ async function observePageForAgent({ signal } = {}) {
       totalAvailableTextCharacters: page.stats.totalAvailableTextCharacters
     },
     instruction:
-      "This is a compact action-oriented observation. Element references are valid only for this observation. Use search_captured_page_text only for long-form information already present in this snapshot. Observe again after navigation or a meaningful structural change."
+      "This is a compact action-oriented observation ranked for the active objective. Element references are valid only for this observation. Use find_interactive_elements when target control text is known but its reference is unclear. Use search_captured_page_text only for long-form information already present in this snapshot."
+  };
+}
+
+function normalizeElementSearchText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+async function findInteractiveElementsForAgent(
+  { query, scope = "viewport", maxResults = 8 } = {},
+  { signal, objective = null } = {}
+) {
+  signal?.throwIfAborted();
+  const target = normalizeElementSearchText(query);
+  if (!target) throw new Error("A control text query is required.");
+  if (!agentObservationState.page || !agentObservationState.observationId) {
+    throw new Error("Call observe_page before locating an interactive element.");
+  }
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (
+    !tab?.id ||
+    tab.id !== agentObservationState.tabId ||
+    (tab.url || "") !== agentObservationState.url
+  ) {
+    throw new Error("The active page changed. Call observe_page before locating a control.");
+  }
+  const terms = target.split(/[^a-z0-9]+/).filter((term) => term.length > 1);
+  const candidates = agentObservationState.page.interactiveElements
+    .filter((element) => scope !== "viewport" || element.inViewport)
+    .map((element) => {
+      const label = normalizeElementSearchText(element.label);
+      const name = normalizeElementSearchText(element.name);
+      const href = normalizeElementSearchText(element.href);
+      const combined = `${label} ${name} ${href}`.trim();
+      let matchScore = 0;
+      let matchType = "related";
+      if (label === target) {
+        matchScore = 100;
+        matchType = "exact-label";
+      } else if (
+        label &&
+        (label.includes(target) || target.includes(label))
+      ) {
+        matchScore = 80;
+        matchType = "label-substring";
+      } else {
+        matchScore = terms.reduce(
+          (score, term) =>
+            score +
+            (label.includes(term) ? 10 : name.includes(term) ? 5 : href.includes(term) ? 2 : 0),
+          0
+        );
+      }
+      return {
+        element,
+        score:
+          matchScore +
+          scoreElementForObjective(element, objective) +
+          (element.inViewport ? 2 : 0) -
+          (element.disabled ? 10 : 0),
+        matchType,
+        combined
+      };
+    })
+    .filter((candidate) => candidate.score > 0 && candidate.combined)
+    .sort((left, right) => right.score - left.score || left.element.index - right.element.index)
+    .slice(0, Math.min(12, Math.max(1, Number(maxResults) || 8)));
+
+  const matches = candidates.map(({ element, score, matchType }) => {
+    const withRef = { ref: `e${element.index}`, ...element };
+    agentObservationState.elements.set(
+      withRef.ref,
+      getAgentElementFingerprint(withRef)
+    );
+    return {
+      elementRef: withRef.ref,
+      kind: withRef.kind,
+      label: withRef.label,
+      name: withRef.name,
+      href: withRef.href,
+      disabled: Boolean(withRef.disabled),
+      checked: withRef.checked,
+      selected: withRef.selected,
+      pressed: withRef.pressed,
+      inViewport: Boolean(withRef.inViewport),
+      matchType,
+      score
+    };
+  });
+  return {
+    observationId: agentObservationState.observationId,
+    query: String(query),
+    scope,
+    matches,
+    requiresObservation: false,
+    instruction: matches.length
+      ? "Use the best matching enabled elementRef with an action tool. No new page capture was performed."
+      : "No matching interactive control was found in the current snapshot. Observe only if the page may have changed; otherwise use one recovery strategy."
   };
 }
 
@@ -3280,6 +3563,14 @@ async function searchCapturedPageTextForAgent({ query } = {}, { signal } = {}) {
   if (!focusedQuery) throw new Error("A focused page-content query is required.");
   if (!agentObservationState.page || !agentObservationState.observationId) {
     throw new Error("Call observe_page before searching page content.");
+  }
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (
+    !tab?.id ||
+    tab.id !== agentObservationState.tabId ||
+    (tab.url || "") !== agentObservationState.url
+  ) {
+    throw new Error("The active page changed. Call observe_page before searching its captured text.");
   }
   if (!BrowserChatRag.getSettings().enabled) {
     throw new Error("Page-content search requires Files & RAG to be enabled.");
@@ -3349,7 +3640,30 @@ async function waitForAgentUrlChange(tabId, beforeUrl, signal, timeoutMs = 4000)
   return { changed: (tab.url || "") !== beforeUrl, url: tab.url || "" };
 }
 
-async function performAgentElementAction(action, payload, { signal } = {}) {
+function getAgentPageStateSignature(page) {
+  if (!page) return "";
+  const controls = (page.interactiveElements || []).map((element) => [
+    element.kind,
+    element.label,
+    element.href,
+    element.checked,
+    element.selected,
+    element.pressed,
+    element.disabled
+  ]);
+  return JSON.stringify([
+    page.page?.url || "",
+    page.visibleText?.inViewport || "",
+    page.viewport?.scrollY || 0,
+    controls
+  ]);
+}
+
+async function performAgentElementAction(
+  action,
+  payload,
+  { signal, objective = null } = {}
+) {
   signal?.throwIfAborted();
   const elementRef = String(payload?.elementRef || "");
   const fingerprint = agentObservationState.elements.get(elementRef);
@@ -3364,12 +3678,22 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
   if (tab.url && tab.url !== agentObservationState.url) {
     throw new Error("The page URL changed. Call observe_page again before acting.");
   }
+  const beforePageSignature = getAgentPageStateSignature(
+    agentObservationState.page
+  );
+  const beforeTabIds = action === "click"
+    ? new Set(
+        (await chrome.tabs.query({ windowId: tab.windowId }))
+          .map((candidate) => candidate.id)
+          .filter(Number.isInteger)
+      )
+    : null;
 
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     args: [{ action, payload, fingerprint }],
     func: ({ action, payload, fingerprint }) => {
-      const normalize = (value = "") => String(value).replace(/\s+/g, " ").trim();
+      const normalize = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
       const isVisible = (element) => {
         if (!(element instanceof Element)) return false;
         if (element.closest("[hidden], [aria-hidden='true']")) return false;
@@ -3579,7 +3903,7 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
       tab.url || "",
       signal
     );
-    const postSubmitObservation = await observePageForAgent({ signal });
+    const postSubmitObservation = await observePageForAgent({ signal, objective });
     return {
       previousObservationId,
       observationId: postSubmitObservation.observationId,
@@ -3597,12 +3921,70 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
     };
   }
 
+  if (action === "click") {
+    const previousObservationId = agentObservationState.observationId;
+    const transition = await waitForAgentUrlChange(
+      tab.id,
+      tab.url || "",
+      signal,
+      650
+    );
+    if (!transition.changed) await waitWithSignal(250, signal);
+    const newTabs = beforeTabIds
+      ? (await chrome.tabs.query({ windowId: tab.windowId }))
+          .filter((candidate) => !beforeTabIds.has(candidate.id))
+          .map((candidate) => ({
+            tabId: candidate.id,
+            url: candidate.url || "",
+            title: candidate.title || "",
+            active: Boolean(candidate.active)
+          }))
+      : [];
+    const postClickObservation = await observePageForAgent({ signal, objective });
+    const stateChanged =
+      beforePageSignature !== getAgentPageStateSignature(
+        agentObservationState.page
+      );
+    const checkedStateChanged =
+      result.beforeChecked !== null &&
+      result.afterChecked !== null &&
+      result.beforeChecked !== result.afterChecked;
+    const effect = newTabs.length
+      ? "new-tab"
+      : transition.changed
+        ? "navigation"
+        : checkedStateChanged
+          ? "control-state"
+          : stateChanged
+            ? "dom-update"
+            : "none-detected";
+    return {
+      previousObservationId,
+      observationId: postClickObservation.observationId,
+      elementRef,
+      ...result,
+      beforeUrl: tab.url || "",
+      afterUrl: transition.url,
+      navigationDetected: transition.changed,
+      newTabDetected: newTabs.length > 0,
+      newTabs,
+      stateChanged,
+      effect,
+      pageChange: effect,
+      requiresObservation: false,
+      postClickObservation,
+      nextStep:
+        effect === "none-detected"
+          ? "No navigation, control-state change, or DOM update was detected. Do not repeat this click blindly; use a locator, visual recovery, or a different action."
+          : "The click effect and resulting page observation are included. Use postClickObservation directly; do not call observe_page again."
+    };
+  }
+
   const checkedStateChanged =
-    action === "click" &&
     result.beforeChecked !== null &&
     result.afterChecked !== null &&
     result.beforeChecked !== result.afterChecked;
-  const requiresObservation = action === "click" && !checkedStateChanged;
+  const requiresObservation = false;
   const nextStep = action === "fill"
     ? "The field value was verified but not submitted. Continue with the latest evidence, or explicitly submit the search; do not observe merely to re-verify the text."
     : action === "select"
@@ -3620,7 +4002,10 @@ async function performAgentElementAction(action, payload, { signal } = {}) {
   };
 }
 
-async function scrollPageForAgent({ direction, amount } = {}, { signal } = {}) {
+async function scrollPageForAgent(
+  { direction, amount } = {},
+  { signal, objective = null } = {}
+) {
   signal?.throwIfAborted();
   const allowedDirections = new Set(["up", "down", "top", "bottom"]);
   if (!allowedDirections.has(direction)) throw new Error("Invalid scroll direction.");
@@ -3640,7 +4025,7 @@ async function scrollPageForAgent({ direction, amount } = {}, { signal } = {}) {
     }
   });
   signal?.throwIfAborted();
-  return observePageForAgent({ signal });
+  return observePageForAgent({ signal, objective });
 }
 
 async function takeScreenshotForAgent({ signal, addImage } = {}) {
@@ -3702,6 +4087,7 @@ function waitWithSignal(milliseconds, signal) {
 
 globalThis.BrowserChatAgentRuntime = Object.freeze({
   observe: observePageForAgent,
+  findInteractiveElements: findInteractiveElementsForAgent,
   searchCapturedPageText: searchCapturedPageTextForAgent,
   fillField: (arguments_, context) =>
     performAgentElementAction("fill", arguments_, context),
@@ -3711,10 +4097,13 @@ globalThis.BrowserChatAgentRuntime = Object.freeze({
     performAgentElementAction("select", arguments_, context),
   scrollPage: scrollPageForAgent,
   takeScreenshot: takeScreenshotForAgent,
-  async waitForPage({ seconds = 1 } = {}, { signal } = {}) {
+  async waitForPage(
+    { seconds = 1 } = {},
+    { signal, objective = null } = {}
+  ) {
     const safeSeconds = Math.min(10, Math.max(0, Number(seconds) || 1));
     await waitWithSignal(safeSeconds * 1000, signal);
-    return observePageForAgent({ signal });
+    return observePageForAgent({ signal, objective });
   }
 });
 
@@ -3806,6 +4195,328 @@ async function selectSkillsForPrompt(prompt, signal, selectedSkillIds = []) {
     console.warn("Skill selection failed; continuing without skills.", error);
     return [];
   }
+}
+
+function parseJsonObject(value) {
+  try {
+    return JSON.parse(
+      String(value || "")
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function createObjectivePlan(
+  prompt,
+  signal,
+  { previousPlan = null, evidence = null } = {}
+) {
+  const replanning = Boolean(previousPlan);
+  const system = [
+    "Create a compact execution plan for an autonomous browser agent.",
+    "Return JSON only with {goal, objectives}.",
+    "Use 2-7 ordered objectives. Each objective needs id, description, predicates, and maxAttempts.",
+    "Allowed deterministic predicates are:",
+    '{"type":"url_host_equals","value":"example.com"},',
+    '{"type":"url_contains","value":"/path"},',
+    '{"type":"url_path_contains","value":"/path"},',
+    '{"type":"page_text_contains","value":"visible text"},',
+    '{"type":"control_checked","query":"control label"},',
+    '{"type":"control_selected","query":"control label","value":"selected label"}.',
+    "Every objective must have at least one predicate that provides concrete completion evidence.",
+    "Keep objectives outcome-focused and small enough for at most four browser actions.",
+    "Do not plan irreversible purchasing, submission, application, deletion, or messaging actions unless the user explicitly requested them; otherwise stop at the review or confirmation boundary.",
+    replanning
+      ? "Revise only the blocked or remaining work. Preserve completed objectives with status completed and their evidence."
+      : "Set the first objective active and all later objectives pending."
+  ].join(" ");
+  const user = {
+    request: prompt,
+    currentUrl: currentSite.pageUrl || "",
+    ...(previousPlan ? { previousPlan } : {}),
+    ...(evidence ? { latestEvidence: evidence } : {})
+  };
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: elements.modelSelect.value,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: JSON.stringify(user) }
+        ],
+        stream: false,
+        think: false,
+        format: "json"
+      }),
+      signal
+    });
+    if (!response.ok) return previousPlan;
+    const data = await response.json();
+    const parsed = parseJsonObject(data.message?.content);
+    const normalized = normalizeObjectivePlan({
+      ...parsed,
+      replanCount: previousPlan ? previousPlan.replanCount + 1 : 0,
+      createdAt: previousPlan?.createdAt || Date.now()
+    });
+    if (!normalized) return previousPlan;
+    if (previousPlan) {
+      const completedById = new Map(
+        previousPlan.objectives
+          .filter((objective) => objective.status === "completed")
+          .map((objective) => [objective.id, objective])
+      );
+      for (const objective of normalized.objectives) {
+        const completed = completedById.get(objective.id);
+        if (!completed) continue;
+        objective.status = "completed";
+        objective.evidence = completed.evidence;
+        completedById.delete(objective.id);
+      }
+      normalized.objectives.unshift(...completedById.values());
+      if (!getActiveObjective(normalized)) activateNextObjective(normalized);
+    }
+    return normalized;
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    console.warn("Objective planning failed; continuing without a plan.", error);
+    return previousPlan;
+  }
+}
+
+function getLatestAgentPage() {
+  return agentObservationState.page || null;
+}
+
+function getPageVisibleText(page) {
+  return [
+    page?.visibleText?.inViewport,
+    page?.visibleText?.elsewhereOnPage
+  ].filter(Boolean).join("\n").toLocaleLowerCase();
+}
+
+function elementMatchesPredicate(element, predicate) {
+  const query = normalizeElementSearchText(predicate.query);
+  if (!query) return false;
+  const searchable = normalizeElementSearchText([
+    element.label,
+    element.name,
+    element.href
+  ].filter(Boolean).join(" "));
+  return searchable.includes(query);
+}
+
+function evaluateObjectivePredicate(predicate, page) {
+  if (!predicate || !page) return false;
+  const urlValue = page.page?.url || "";
+  let url;
+  try {
+    url = new URL(urlValue);
+  } catch {
+    url = null;
+  }
+  switch (predicate.type) {
+    case "url_host_equals":
+      return Boolean(
+        url &&
+        url.hostname.replace(/^www\./, "") ===
+          String(predicate.value || "").replace(/^www\./, "").toLocaleLowerCase()
+      );
+    case "url_contains":
+      return urlValue.toLocaleLowerCase().includes(
+        String(predicate.value || "").toLocaleLowerCase()
+      );
+    case "url_path_contains":
+      return Boolean(
+        url &&
+        url.pathname.toLocaleLowerCase().includes(
+          String(predicate.value || "").toLocaleLowerCase()
+        )
+      );
+    case "page_text_contains":
+      return getPageVisibleText(page).includes(
+        String(predicate.value || "").toLocaleLowerCase()
+      );
+    case "control_checked":
+      return (page.interactiveElements || []).some(
+        (element) =>
+          elementMatchesPredicate(element, predicate) &&
+          (element.checked === true || element.checked === "true")
+      );
+    case "control_selected":
+      return (page.interactiveElements || []).some(
+        (element) =>
+          elementMatchesPredicate(element, predicate) &&
+          (
+            element.selected === true ||
+            element.pressed === true ||
+            element.checked === true ||
+            element.checked === "true" ||
+            (element.options || []).some(
+              (option) =>
+                option.selected &&
+                (
+                  !predicate.value ||
+                  normalizeElementSearchText(option.label || option.value).includes(
+                    normalizeElementSearchText(predicate.value)
+                  )
+                )
+            )
+          )
+      );
+    default:
+      return false;
+  }
+}
+
+function activateNextObjective(plan) {
+  if (!plan) return null;
+  const next = plan.objectives.find((objective) => objective.status === "pending");
+  if (next) next.status = "active";
+  plan.updatedAt = Date.now();
+  return next || null;
+}
+
+function blockRemainingObjectives(plan, reason) {
+  if (!plan) return;
+  for (const objective of plan.objectives) {
+    if (!["pending", "active"].includes(objective.status)) continue;
+    objective.status = "blocked";
+    objective.evidence = { reason };
+  }
+  plan.updatedAt = Date.now();
+}
+
+function getToolResultPayload(activity) {
+  return activity?.result?.result || null;
+}
+
+function isMeaningfulToolProgress(activity) {
+  const payload = getToolResultPayload(activity);
+  if (!payload || activity.status !== "completed") return false;
+  switch (activity.name) {
+    case "observe_page":
+      return payload.changedSincePreviousObservation !== false;
+    case "find_interactive_elements":
+      return Array.isArray(payload.matches) && payload.matches.length > 0;
+    case "click_element":
+      return payload.effect && payload.effect !== "none-detected";
+    case "fill_field":
+      return payload.submitted
+        ? Boolean(payload.navigationDetected || payload.postSubmitObservation)
+        : Boolean(payload.verified);
+    case "select_option":
+      return Boolean(payload.verified);
+    case "scroll_page":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function evaluateObjectiveProgress(plan, activity) {
+  let objective = getActiveObjective(plan);
+  if (!objective) return { changed: false, needsReplan: false };
+  const page = getLatestAgentPage();
+  let completedAny = false;
+  while (
+    objective &&
+    objective.predicates.length > 0 &&
+    objective.predicates.every((predicate) =>
+      evaluateObjectivePredicate(predicate, page)
+    )
+  ) {
+    objective.status = "completed";
+    objective.evidence = {
+      observationId: agentObservationState.observationId,
+      url: page?.page?.url || "",
+      predicates: objective.predicates
+    };
+    objective.noProgressCount = 0;
+    completedAny = true;
+    objective = activateNextObjective(plan);
+  }
+  if (completedAny) {
+    plan.updatedAt = Date.now();
+    return { changed: true, needsReplan: false };
+  }
+
+  const actionTools = new Set([
+    "click_element",
+    "fill_field",
+    "select_option",
+    "scroll_page",
+    "find_interactive_elements"
+  ]);
+  if (activity.name === "observe_page") {
+    if (isMeaningfulToolProgress(activity)) objective.noProgressCount = 0;
+    else objective.noProgressCount += 1;
+    if (objective.noProgressCount >= 2) {
+      objective.status = "blocked";
+      objective.evidence = {
+        reason: "The page was observed repeatedly without a state change.",
+        url: page?.page?.url || ""
+      };
+      plan.updatedAt = Date.now();
+      return { changed: true, needsReplan: true };
+    }
+    return { changed: true, needsReplan: false };
+  }
+  if (activity.name === "search_captured_page_text") {
+    objective.noProgressCount += 1;
+    if (objective.noProgressCount >= 2) {
+      objective.status = "blocked";
+      objective.evidence = {
+        reason: "Captured page text was searched repeatedly without advancing the objective.",
+        url: page?.page?.url || ""
+      };
+      plan.updatedAt = Date.now();
+      return { changed: true, needsReplan: true };
+    }
+    return { changed: true, needsReplan: false };
+  }
+  if (!actionTools.has(activity.name)) {
+    return { changed: false, needsReplan: false };
+  }
+  objective.attempts += 1;
+  if (isMeaningfulToolProgress(activity)) objective.noProgressCount = 0;
+  else objective.noProgressCount += 1;
+
+  const exhausted =
+    objective.attempts >= objective.maxAttempts ||
+    objective.noProgressCount >= 2;
+  if (exhausted) {
+    objective.status = "blocked";
+    objective.evidence = {
+      lastTool: activity.name,
+      result: summarizeAgentToolActivity(activity),
+      url: page?.page?.url || ""
+    };
+  }
+  plan.updatedAt = Date.now();
+  return { changed: true, needsReplan: exhausted };
+}
+
+function serializeObjectivePlanForAgent(plan) {
+  if (!plan) return null;
+  return {
+    goal: plan.goal,
+    activeObjective: getActiveObjective(plan),
+    objectives: plan.objectives.map((objective) => ({
+      id: objective.id,
+      description: objective.description,
+      status: objective.status,
+      predicates: objective.predicates,
+      attempts: objective.attempts,
+      maxAttempts: objective.maxAttempts
+    })),
+    instruction:
+      "Advance only the active objective. Use its predicates as completion evidence. Use find_interactive_elements when target control text is known but its reference is unclear."
+  };
 }
 
 async function refreshContextPreview() {
@@ -4167,6 +4878,8 @@ function summarizeAgentToolActivity(activity) {
   switch (activity.name) {
     case "observe_page":
       summary.observationId = payload.observationId;
+      summary.changedSincePreviousObservation =
+        payload.changedSincePreviousObservation;
       summary.page = payload.page
         ? { title: payload.page.title || "", url: payload.page.url || "" }
         : undefined;
@@ -4181,6 +4894,13 @@ function summarizeAgentToolActivity(activity) {
         ? payload.passages.length
         : 0;
       break;
+    case "find_interactive_elements":
+      summary.observationId = payload.observationId;
+      summary.query = payload.query;
+      summary.matches = Array.isArray(payload.matches)
+        ? payload.matches.slice(0, 4)
+        : [];
+      break;
     case "fill_field":
       summary.verified = payload.verified;
       summary.enteredCharacterCount = payload.enteredCharacterCount;
@@ -4193,6 +4913,11 @@ function summarizeAgentToolActivity(activity) {
       summary.clicked = payload.clicked;
       summary.beforeChecked = payload.beforeChecked;
       summary.afterChecked = payload.afterChecked;
+      summary.effect = payload.effect;
+      summary.navigationDetected = payload.navigationDetected;
+      summary.newTabDetected = payload.newTabDetected;
+      summary.newTabs = payload.newTabs;
+      summary.afterUrl = payload.afterUrl;
       summary.requiresObservation = payload.requiresObservation;
       break;
     case "select_option":
@@ -4224,7 +4949,8 @@ function replaceAgentRoundContext(
   baseMessages,
   responseMessage,
   results,
-  toolActivities
+  toolActivities,
+  objectivePlan = null
 ) {
   const recentActions = toolActivities
     .slice(-AGENT_WORKING_MEMORY_ACTION_LIMIT)
@@ -4232,6 +4958,9 @@ function replaceAgentRoundContext(
   const workingMemory = {
     actionCount: toolActivities.length,
     recentActions,
+    ...(objectivePlan
+      ? { objectivePlan: serializeObjectivePlanForAgent(objectivePlan) }
+      : {}),
     instruction:
       "Only the latest tool exchange is retained below. Earlier full observations and screenshots were intentionally compacted. Use recentActions as execution history and call a context tool when fresh evidence is required."
   };
@@ -4255,12 +4984,16 @@ async function runToolCallingLoop(
     onThinking,
     onContent,
     onToolCallStart,
-    onToolCallFinish
+    onToolCallFinish,
+    objectivePlan = null,
+    onObjectivePlanChange,
+    replanObjective
   }
 ) {
   let combinedThinking = "";
   let initialThinking = "";
   let displayedContent = "";
+  let objectiveStallCount = 0;
   const toolActivities = [];
   const baseMessages = messages.slice();
 
@@ -4289,6 +5022,13 @@ async function runToolCallingLoop(
   };
 
   const streamFinalAnswer = async () => {
+    if (getActiveObjective(objectivePlan)) {
+      blockRemainingObjectives(
+        objectivePlan,
+        "The user ended tool execution and requested the current answer."
+      );
+      onObjectivePlanChange?.(objectivePlan);
+    }
     messages.push({
       role: "system",
       content:
@@ -4319,7 +5059,8 @@ async function runToolCallingLoop(
       content: displayedContent,
       thinking: combinedThinking,
       initialThinking,
-      toolActivities
+      toolActivities,
+      objectivePlan
     };
   };
 
@@ -4365,6 +5106,29 @@ async function runToolCallingLoop(
       .join("\n\n");
 
     if (!response.toolCalls.length) {
+      const activeObjective = getActiveObjective(objectivePlan);
+      if (activeObjective && objectiveStallCount < 1) {
+        objectiveStallCount += 1;
+        messages.push({
+          role: "system",
+          content:
+            `The active objective is not yet complete: ${activeObjective.description}. ` +
+            "Continue with the smallest useful tool action. Do not provide a final answer until its predicates are satisfied or bounded recovery marks it blocked."
+        });
+        continue;
+      }
+      if (activeObjective) {
+        activeObjective.status = "blocked";
+        activeObjective.evidence = {
+          reason: "The executor produced no tool action for the active objective."
+        };
+        blockRemainingObjectives(
+          objectivePlan,
+          "A prerequisite objective could not be executed."
+        );
+        objectivePlan.updatedAt = Date.now();
+        onObjectivePlanChange?.(objectivePlan);
+      }
       displayedContent = [displayedContent, response.message.content]
         .filter(Boolean)
         .join("\n\n");
@@ -4372,9 +5136,11 @@ async function runToolCallingLoop(
         content: displayedContent,
         thinking: combinedThinking,
         initialThinking,
-        toolActivities
+        toolActivities,
+        objectivePlan
       };
     }
+    objectiveStallCount = 0;
 
     if (response.message.content) {
       displayedContent = [displayedContent, response.message.content]
@@ -4383,6 +5149,7 @@ async function runToolCallingLoop(
     }
 
     const results = [];
+    let replanRequested = false;
     for (const call of response.toolCalls) {
       if (toolActivities.length >= MAX_TOOL_CALLS_PER_RESPONSE) {
         throw new Error(
@@ -4419,6 +5186,7 @@ async function runToolCallingLoop(
           })
         : await BrowserChatTools.executeCall(call, {
             signal,
+            objective: getActiveObjective(objectivePlan),
             addImage: (base64) => {
               if (typeof base64 === "string" && base64) toolImages.push(base64);
             }
@@ -4433,6 +5201,9 @@ async function runToolCallingLoop(
       }
       Object.assign(activity, { status, result: parsedResult });
       onToolCallFinish?.({ ...activity });
+      const progress = evaluateObjectiveProgress(objectivePlan, activity);
+      if (progress.changed) onObjectivePlanChange?.(objectivePlan);
+      if (progress.needsReplan) replanRequested = true;
 
       results.push({
         role: "tool",
@@ -4448,12 +5219,52 @@ async function runToolCallingLoop(
         });
       }
     }
+
+    const blockedObjective = replanRequested
+      ? objectivePlan?.objectives?.find(
+          (objective) => objective.status === "blocked"
+        )
+      : null;
+    if (
+      blockedObjective &&
+      objectivePlan.replanCount < 2 &&
+      typeof replanObjective === "function"
+    ) {
+      const replanned = await replanObjective(objectivePlan, {
+        blockedObjective,
+        recentActions: toolActivities
+          .slice(-4)
+          .map(summarizeAgentToolActivity),
+        page: agentObservationState.page?.page || null
+      });
+      if (
+        replanned &&
+        replanned !== objectivePlan &&
+        getActiveObjective(replanned)
+      ) {
+        objectivePlan = replanned;
+        onObjectivePlanChange?.(objectivePlan);
+      } else {
+        blockRemainingObjectives(
+          objectivePlan,
+          "Replanning did not produce an executable objective."
+        );
+        onObjectivePlanChange?.(objectivePlan);
+      }
+    } else if (blockedObjective) {
+      blockRemainingObjectives(
+        objectivePlan,
+        "Bounded recovery was exhausted before this objective could begin."
+      );
+      onObjectivePlanChange?.(objectivePlan);
+    }
     replaceAgentRoundContext(
       messages,
       baseMessages,
       response.message,
       results,
-      toolActivities
+      toolActivities,
+      objectivePlan
     );
   }
 }
@@ -4538,6 +5349,11 @@ async function submitPrompt(prompt) {
 
   const chatId = activeChatId;
   await rememberSentSiteForChat(chatId);
+  const taskChat = chats.find((item) => item.id === chatId);
+  if (taskChat) {
+    taskChat.objectivePlan = null;
+    renderObjectivePlan(null);
+  }
   const selectedModel = elements.modelSelect.value;
   const modelSwitching = Boolean(conversationModel && conversationModel !== selectedModel);
   conversationModel = selectedModel;
@@ -4582,6 +5398,7 @@ async function submitPrompt(prompt) {
     assistantUI.toolUI.panel.classList.add("streaming");
   });
   activeRequest = controller;
+  let objectivePlan = null;
   updateSendButton();
 
   try {
@@ -4644,6 +5461,20 @@ async function submitPrompt(prompt) {
       selectionSource: requestedSkillIds.includes(skill.id) ? "explicit" : "automatic"
     }));
     assistantUI.showSkills(skillActivities);
+    const usesComputerControl = selectedSkills.some(
+      (skill) => skill.id === "computer-use"
+    );
+    if (usesComputerControl) {
+      assistantUI.processingLabel.textContent = "Planning browser task…";
+      objectivePlan = await createObjectivePlan(prompt, controller.signal);
+      const chat = chats.find((item) => item.id === chatId);
+      if (chat && objectivePlan) {
+        chat.objectivePlan = objectivePlan;
+        chat.updatedAt = Date.now();
+        renderObjectivePlan(objectivePlan);
+        await persistChats();
+      }
+    }
     assistantUI.addAttachments({
       order: composerAttachmentOrder,
       contextAttachment,
@@ -4663,6 +5494,15 @@ async function submitPrompt(prompt) {
         .filter((attachment) => attachment.kind === "image" && attachment.base64)
         .map((attachment) => attachment.base64)
     );
+    if (objectivePlan) {
+      messages.splice(messages.length - 1, 0, {
+        role: "system",
+        content:
+          `<objective_plan>${JSON.stringify(
+            serializeObjectivePlanForAgent(objectivePlan)
+          )}</objective_plan>`
+      });
+    }
     const answer = await runToolCallingLoop(messages, controller.signal, {
       answerNowSignal: answerNowController.signal,
       onThinking: (thinking, { roundThinking = thinking, activity = null } = {}) => {
@@ -4729,8 +5569,25 @@ async function submitPrompt(prompt) {
       onToolCallFinish: (activity) => {
         renderToolActivity(assistantUI.toolUI, activity);
         scrollToLatest();
-      }
+      },
+      objectivePlan,
+      onObjectivePlanChange: (nextPlan) => {
+        objectivePlan = normalizeObjectivePlan(nextPlan);
+        const chat = chats.find((item) => item.id === chatId);
+        if (chat) {
+          chat.objectivePlan = objectivePlan;
+          chat.updatedAt = Date.now();
+        }
+        renderObjectivePlan(objectivePlan);
+        void persistChats();
+      },
+      replanObjective: (currentPlan, evidence) =>
+        createObjectivePlan(prompt, controller.signal, {
+          previousPlan: currentPlan,
+          evidence
+        })
     });
+    objectivePlan = answer.objectivePlan || objectivePlan;
 
     assistantUI.toolUI.actions.hidden = true;
     if (assistantUI.toolUI.activities.size) {
@@ -4764,6 +5621,7 @@ async function submitPrompt(prompt) {
       ...(answer.toolActivities?.length
         ? { toolActivities: answer.toolActivities }
         : {}),
+      ...(objectivePlan ? { objectivePlan } : {}),
       ...(skillActivities.length ? { skillActivities } : {}),
       ...(retrieval.sources.length
         ? { sourceReferences: retrieval.sources }
@@ -4798,6 +5656,18 @@ async function submitPrompt(prompt) {
       void generateTitleForChat(chatId, selectedModel);
     }
   } catch (error) {
+    if (objectivePlan && getActiveObjective(objectivePlan)) {
+      blockRemainingObjectives(
+        objectivePlan,
+        error.name === "AbortError"
+          ? "The browser task was stopped before completion."
+          : error.message || "The browser task stopped because of a runtime error."
+      );
+      const chat = chats.find((item) => item.id === chatId);
+      if (chat) chat.objectivePlan = objectivePlan;
+      renderObjectivePlan(objectivePlan);
+      void persistChats();
+    }
     assistantUI.toolUI.actions.hidden = true;
     if (contextAttachment && !contextAttachment.context) {
       setReplyContextAvailability(contextAttachment, false);

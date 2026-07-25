@@ -47,6 +47,17 @@
         </div>
       </header>
 
+      <section id="objectivePanel" class="objective-panel" aria-live="polite" hidden>
+        <button id="objectivePanelToggle" class="objective-panel-toggle" type="button" aria-expanded="true">
+          <span class="objective-panel-heading">
+            <span id="objectivePanelProgress" class="objective-panel-progress">0/0</span>
+            <strong id="objectivePanelGoal">Planning task…</strong>
+          </span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"/></svg>
+        </button>
+        <ol id="objectiveList" class="objective-list"></ol>
+      </section>
+
       <main id="conversation" class="conversation" aria-live="polite">
         <section id="emptyState" class="empty-state">
           <div class="empty-icon" aria-hidden="true">

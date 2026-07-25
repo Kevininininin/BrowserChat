@@ -121,7 +121,7 @@
           <div class="architecture-notes">
             <article><strong>Skills are selective</strong><span>When enabled, only selected skill instructions expand the effective system prompt.</span></article>
             <article><strong>Tools stay local</strong><span>BrowserChat executes registered functions inside the extension.</span></article>
-            <article><strong>Actions guide observation</strong><span>Tool results report whether another observation is needed; submitted searches include their resulting page observation.</span></article>
+            <article><strong>Objectives guide actions</strong><span>Browser tasks are planned into verified steps; controls are ranked for the active objective and bounded recovery can trigger replanning.</span></article>
           </div>
         </section>
 
@@ -562,7 +562,7 @@ flowchart TD
             <div>
               <span class="eyebrow">Runtime capabilities</span>
               <h1>Tools</h1>
-              <p>A read-only inventory of BrowserChat's current capabilities. Search fields can be filled and safely submitted, while captured-page text search remains scoped to the existing snapshot.</p>
+              <p>A read-only inventory of BrowserChat's current capabilities. The agent can locate controls in its current snapshot, verify click effects, and safely submit recognized search fields.</p>
             </div>
             <div class="local-badge">
               <span></span>
@@ -733,8 +733,8 @@ flowchart TD
                 </label>
                 <label>
                   <span class="prompt-field-title">Tool behavior</span>
-                  <span class="prompt-field-description">Sent on every message. It distinguishes verified text entry from search submission, explains action-specific observation guidance, and limits captured-page text search to the current snapshot.</span>
-                  <textarea data-prompt-key="toolInstruction" rows="7"></textarea>
+                  <span class="prompt-field-description">Sent on every message. It explains objective execution, targeted control lookup, action-effect verification, safe search submission, and snapshot-search boundaries.</span>
+                  <textarea data-prompt-key="toolInstruction" rows="8"></textarea>
                 </label>
                 <label>
                   <span class="prompt-field-title">Skill and tool boundary</span>
