@@ -1,20 +1,78 @@
-# BrowserChat
+<div align="center">
+  <img src="assets/icon-128.png" alt="BrowserChat icon" width="88">
+  <h1>BrowserChat</h1>
+  <p><strong>A private, page-aware AI assistant that lives in Chrome's side panel.</strong></p>
+  <p>
+    Chat with the page in front of you, work with local files, and run browser
+    tools using Ollama—without leaving your current tab.
+  </p>
+  <p>
+    <img alt="Chrome Extension" src="https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white">
+    <img alt="Manifest V3" src="https://img.shields.io/badge/Manifest-V3-5F6368">
+    <img alt="Powered by Ollama" src="https://img.shields.io/badge/Powered_by-Ollama-white?logo=ollama&logoColor=black">
+    <img alt="No build step" src="https://img.shields.io/badge/build-none-2E7D32">
+  </p>
+</div>
 
-BrowserChat is essentially ChatGPT in a Chrome extension, powered by local or Ollama Cloud models and able to understand the page open in your browser. In a nutshell, it brings an Open WebUI-style experience into Chrome's side panel, with extensible skills and tools that open the door to many more workflows.
+> [!NOTE]
+> BrowserChat is currently installed as an unpacked Chrome extension and
+> requires Ollama. It has not yet been published to the Chrome Web Store.
 
-The extension captures the active tab's DOM, combines that page context with
-your prompt, and streams the response through Ollama. Local models keep model
-requests on your computer. When you explicitly select an Ollama Cloud model,
-the prompt and any attached page context or images are processed by Ollama
-Cloud after a one-time privacy confirmation.
+## Demo
 
-## Requirements
+[![BrowserChat demo showing the Chrome side panel](docs/media/browserchat-side-panel.png)](docs/media/browserchat-demo.mp4)
+
+**[Watch the 46-second demo →](docs/media/browserchat-demo.mp4)**
+
+The compressed demo is about 3 MB. Click the preview or link above to open it
+directly from the repository.
+
+## What you can do
+
+- **Ask about any page:** attach the rendered page or a selected section as
+  context, then summarize, explain, compare, or extract details.
+- **Keep inference local:** connect to models served by Ollama on your computer,
+  with optional Ollama Cloud models available only when you choose one.
+- **Work with your own knowledge:** upload supported documents for chat-scoped
+  local RAG, or attach images to a vision-capable model.
+- **Use skills and tools:** let the model select reusable skills and run
+  inspectable browser actions through a bounded agent loop.
+- **Understand every run:** inspect thinking, selected skills, tool activity,
+  retrieved sources, and downloadable JSON response traces.
+
+## Product tour
+
+### Page-aware chat
+
+BrowserChat stays beside the active tab and offers quick prompts for common
+page-reading tasks.
+
+![BrowserChat open beside the Google home page](docs/media/browserchat-side-panel.png)
+
+### Inspectable local agent runtime
+
+The settings experience documents how prompts, page context, RAG, skills, tools,
+and Ollama fit together.
+
+![BrowserChat Agent Runtime settings and side panel](docs/media/browserchat-agent-runtime.png)
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Skills](#skills)
+- [Tools](#tools)
+- [Privacy and permissions](#privacy-and-permissions)
+- [Troubleshooting](#troubleshooting)
+
+## Quick start
+
+### Requirements
 
 - Google Chrome 114 or newer
 - [Ollama](https://ollama.com/) running locally
 - At least one Ollama model
-
-## Installation
 
 ### 1. Install Ollama and a model
 
