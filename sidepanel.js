@@ -3815,7 +3815,7 @@ async function findAndClickForAgent(
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     args: [{ target, match }],
-    func: ({ target, match }) => {
+    func: async ({ target, match }) => {
       const normalize = (value) =>
         String(value ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
       const isVisible = (element) => {
@@ -3892,7 +3892,17 @@ async function findAndClickForAgent(
       }
       const { element, label } = candidates[0];
       const href = element instanceof HTMLAnchorElement ? element.href : "";
-      element.scrollIntoView({ block: "center", inline: "center" });
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      const rect = element.getBoundingClientRect();
+      const cursor = globalThis.__browserChatControlIndicator;
+      cursor?.setStatus?.(`Clicking “${label}”`);
+      await cursor?.moveTo?.(
+        rect.left + Math.min(rect.width / 2, Math.max(8, rect.width - 8)),
+        rect.top + Math.min(rect.height / 2, Math.max(8, rect.height - 8))
+      );
+      cursor?.click?.();
+      await new Promise((resolve) => setTimeout(resolve, 160));
       element.click();
       return { clicked: true, query: target, match, label, href };
     }
@@ -4084,7 +4094,7 @@ async function performAgentElementAction(
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     args: [{ action, payload, fingerprint }],
-    func: ({ action, payload, fingerprint }) => {
+    func: async ({ action, payload, fingerprint }) => {
       const normalize = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
       const isVisible = (element) => {
         if (!(element instanceof Element)) return false;
@@ -4153,7 +4163,18 @@ async function performAgentElementAction(
         throw new Error("The referenced element is disabled.");
       }
 
-      element.scrollIntoView({ block: "center", inline: "nearest" });
+      element.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      const rect = element.getBoundingClientRect();
+      const cursor = globalThis.__browserChatControlIndicator;
+      const targetX = rect.left + Math.min(rect.width / 2, Math.max(8, rect.width - 8));
+      const targetY = rect.top + Math.min(rect.height / 2, Math.max(8, rect.height - 8));
+      cursor?.setStatus?.(
+        action === "fill" ? `Filling “${current.label || "field"}”` :
+          action === "select" ? `Selecting “${current.label || "option"}”` :
+            `Clicking “${current.label || "control"}”`
+      );
+      await cursor?.moveTo?.(targetX, targetY);
 
       if (action === "fill") {
         if (!element.matches("input, textarea, [contenteditable='true']")) {
@@ -4163,6 +4184,8 @@ async function performAgentElementAction(
           throw new Error("Password fields cannot be filled by this tool.");
         }
         const text = String(payload.text ?? "");
+        cursor?.click?.();
+        await new Promise((resolve) => setTimeout(resolve, 120));
         element.focus();
         if (element.matches("[contenteditable='true']")) {
           element.textContent = text;
@@ -4254,6 +4277,8 @@ async function performAgentElementAction(
               normalize(candidate.label || candidate.textContent) === normalize(requestedLabel)
         );
         if (!option) throw new Error("The requested option was not found.");
+        cursor?.click?.();
+        await new Promise((resolve) => setTimeout(resolve, 120));
         element.value = option.value;
         element.dispatchEvent(new Event("input", { bubbles: true }));
         element.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4273,6 +4298,8 @@ async function performAgentElementAction(
         }
         const beforeChecked = "checked" in element ? Boolean(element.checked) : null;
         element.focus();
+        cursor?.click?.();
+        await new Promise((resolve) => setTimeout(resolve, 160));
         element.click();
         return {
           action: "click_element",
@@ -4433,18 +4460,180 @@ async function scrollPageForAgent(
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     args: [{ direction, amount }],
-    func: ({ direction, amount }) => {
+    func: async ({ direction, amount }) => {
       const distance = Math.min(5000, Math.max(1, Number(amount) || innerHeight * 0.8));
-      if (direction === "top") scrollTo({ top: 0, behavior: "instant" });
+      const cursor = globalThis.__browserChatControlIndicator;
+      cursor?.setStatus?.(
+        direction === "top" ? "Scrolling to the top" :
+          direction === "bottom" ? "Scrolling to the bottom" :
+            `Scrolling ${direction}`
+      );
+      if (direction === "top") scrollTo({ top: 0, behavior: "smooth" });
       else if (direction === "bottom") {
-        scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+        scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
       } else {
-        scrollBy({ top: direction === "up" ? -distance : distance, behavior: "instant" });
+        scrollBy({ top: direction === "up" ? -distance : distance, behavior: "smooth" });
       }
+      await new Promise((resolve) => {
+        let lastY = scrollY;
+        let stableFrames = 0;
+        const startedAt = performance.now();
+        const check = () => {
+          const nextY = scrollY;
+          stableFrames = Math.abs(nextY - lastY) < 1 ? stableFrames + 1 : 0;
+          lastY = nextY;
+          if (stableFrames >= 5 || performance.now() - startedAt > 1400) resolve();
+          else requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
     }
   });
   signal?.throwIfAborted();
   return observePageForAgent({ signal, objective });
+}
+
+const BROWSER_CONTROL_TOOL_NAMES = new Set([
+  "find_and_click",
+  "observe_page",
+  "fill_field",
+  "click_element",
+  "select_option",
+  "scroll_page",
+  "take_screenshot",
+  "wait_for_page",
+  "get_current_website"
+]);
+
+function getBrowserControlStatus(activity = {}, thinking = "") {
+  if (thinking) return String(thinking).replace(/\s+/g, " ").trim().slice(0, 180);
+  const arguments_ = activity.arguments || {};
+  switch (activity.name) {
+    case "find_and_click":
+      return `Finding and clicking “${arguments_.query || "a control"}”`;
+    case "click_element":
+      return `Clicking ${arguments_.elementRef || "a page control"}`;
+    case "fill_field":
+      return `Filling ${arguments_.elementRef || "a field"}`;
+    case "select_option":
+      return `Selecting an option in ${arguments_.elementRef || "a menu"}`;
+    case "scroll_page":
+      return `Scrolling ${arguments_.direction || "the page"}`;
+    case "observe_page":
+      return "Looking at the page";
+    case "take_screenshot":
+      return "Taking a screenshot";
+    case "wait_for_page":
+      return "Waiting for the page";
+    case "get_current_website":
+      return "Checking the current page";
+    default:
+      return `Using ${String(activity.name || "browser control").replaceAll("_", " ")}`;
+  }
+}
+
+async function updateBrowserControlIndicator(activity, thinking = "") {
+  if (!BROWSER_CONTROL_TOOL_NAMES.has(activity?.name)) return;
+  let tab;
+  try {
+    [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const site = getSiteDetails(tab);
+    if (!tab?.id || site.restricted) return;
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      args: [getBrowserControlStatus(activity, thinking)],
+      func: (status) => {
+        const rootId = "__browserchat_control_indicator";
+        let root = document.getElementById(rootId);
+        if (!root) {
+          root = document.createElement("div");
+          root.id = rootId;
+          root.style.setProperty("display", "contents", "important");
+          const shadow = root.attachShadow({ mode: "open" });
+          shadow.innerHTML = `
+            <style>
+              :host { all: initial; }
+              .shade { position: fixed; inset: 0; z-index: 2147483644; pointer-events: none;
+                background: linear-gradient(180deg, rgba(34,39,66,.025), rgba(45,52,92,.13));
+                opacity: 0; animation: bc-fade-in 180ms ease forwards; }
+              .cursor { position: fixed; left: 50vw; top: 50vh; z-index: 2147483647;
+                width: 22px; height: 28px; pointer-events: none;
+                transition: left 520ms cubic-bezier(.22,.8,.25,1), top 520ms cubic-bezier(.22,.8,.25,1);
+                filter: drop-shadow(0 2px 3px rgba(0,0,0,.28)); }
+              .pointer { width: 19px; height: 24px; background: #6157e8; clip-path:
+                polygon(0 0, 0 88%, 27% 66%, 45% 100%, 60% 91%, 42% 59%, 76% 58%);
+                box-shadow: inset 0 0 0 1px rgba(255,255,255,.85); }
+              .bubble { position: absolute; left: 20px; top: 19px; width: max-content;
+                max-width: min(280px, calc(100vw - 70px)); padding: 8px 11px; border-radius: 5px 13px 13px 13px;
+                color: #fff; background: rgba(31,31,36,.94); box-shadow: 0 5px 18px rgba(0,0,0,.2);
+                font: 600 12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+                letter-spacing: .01em; overflow-wrap: anywhere; }
+              .bubble::after { content: ""; display: inline-block; width: 5px; height: 5px;
+                margin-left: 7px; border-radius: 50%; background: #a9a3ff;
+                animation: bc-thinking 900ms ease-in-out infinite alternate; vertical-align: 1px; }
+              .cursor.edge-right .bubble { left: auto; right: 20px; border-radius: 13px 5px 13px 13px; }
+              .cursor.edge-bottom .bubble { top: auto; bottom: 20px; }
+              .cursor.clicking .pointer { animation: bc-click 330ms ease; }
+              .cursor.clicking::after { content: ""; position: absolute; left: 5px; top: 7px;
+                width: 10px; height: 10px; border: 2px solid #6157e8; border-radius: 50%;
+                animation: bc-ring 380ms ease-out forwards; }
+              @keyframes bc-fade-in { to { opacity: 1; } }
+              @keyframes bc-thinking { to { opacity: .25; transform: scale(.72); } }
+              @keyframes bc-click { 50% { transform: scale(.78); } }
+              @keyframes bc-ring { to { transform: scale(3.2); opacity: 0; } }
+              @media (prefers-reduced-motion: reduce) {
+                .cursor { transition-duration: 120ms; }
+                .bubble::after { animation: none; }
+              }
+            </style>
+            <div class="shade"></div>
+            <div class="cursor"><div class="pointer"></div><div class="bubble"></div></div>`;
+          (document.documentElement || document.body).append(root);
+          const cursorElement = shadow.querySelector(".cursor");
+          const bubble = shadow.querySelector(".bubble");
+          globalThis.__browserChatControlIndicator = {
+            setStatus(value) { bubble.textContent = String(value || "Working on this page"); },
+            async moveTo(x, y) {
+              const safeX = Math.max(8, Math.min(innerWidth - 28, x));
+              const safeY = Math.max(8, Math.min(innerHeight - 36, y));
+              cursorElement.classList.toggle("edge-right", safeX > innerWidth - 310);
+              cursorElement.classList.toggle("edge-bottom", safeY > innerHeight - 100);
+              cursorElement.style.left = `${safeX}px`;
+              cursorElement.style.top = `${safeY}px`;
+              await new Promise((resolve) => setTimeout(resolve, 540));
+            },
+            click() {
+              cursorElement.classList.remove("clicking");
+              void cursorElement.offsetWidth;
+              cursorElement.classList.add("clicking");
+              setTimeout(() => cursorElement.classList.remove("clicking"), 400);
+            },
+            remove() {
+              root.remove();
+              delete globalThis.__browserChatControlIndicator;
+            }
+          };
+        }
+        globalThis.__browserChatControlIndicator?.setStatus(status);
+      }
+    });
+  } catch {
+    // The active page may navigate while the status is being painted.
+  }
+}
+
+async function removeBrowserControlIndicator() {
+  try {
+    const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+    await Promise.all(tabs.filter((tab) => tab.id).map((tab) =>
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => globalThis.__browserChatControlIndicator?.remove?.()
+      }).catch(() => {})
+    ));
+  } catch {
+    // Restricted, closed, or navigating tabs do not need cleanup.
+  }
 }
 
 async function takeScreenshotForAgent({ signal, addImage } = {}) {
@@ -5727,7 +5916,7 @@ async function runToolCallingLoop(
       };
       activity.unsupported = !BrowserChatTools.hasTool(activity.name);
       toolActivities.push(activity);
-      onToolCallStart?.({ ...activity });
+      await onToolCallStart?.({ ...activity });
 
       // Let the browser paint the live tool status before a fast local tool resolves.
       await new Promise((resolve) => {
@@ -6090,6 +6279,7 @@ async function submitPrompt(prompt) {
         if (!activity) partialResponse.initialThinking = roundThinking;
         if (activity?.id) {
           partialResponse.toolActivities.set(activity.id, { ...activity });
+          void updateBrowserControlIndicator(activity, roundThinking);
         }
         assistantUI.processingStatus.hidden = true;
         assistantUI.hasThinking = true;
@@ -6156,7 +6346,7 @@ async function submitPrompt(prompt) {
         renderObjectiveEvaluation(assistantUI.toolUI, evaluation);
         scrollToLatest();
       },
-      onToolCallStart: (activity) => {
+      onToolCallStart: async (activity) => {
         if (activity?.id) {
           partialResponse.toolActivities.set(activity.id, { ...activity });
         }
@@ -6171,6 +6361,7 @@ async function submitPrompt(prompt) {
         assistantUI.toolUI.panel.open = true;
         renderToolActivity(assistantUI.toolUI, activity);
         scrollToLatest();
+        await updateBrowserControlIndicator(activity);
       },
       onToolCallFinish: (activity) => {
         if (activity?.id) {
@@ -6178,6 +6369,10 @@ async function submitPrompt(prompt) {
         }
         renderToolActivity(assistantUI.toolUI, activity);
         scrollToLatest();
+        void updateBrowserControlIndicator(
+          activity,
+          activity.status === "failed" ? "That browser action failed" : "Browser action complete"
+        );
       },
       objectivePlan,
       onObjectivePlanChange: (nextPlan) => {
@@ -6378,6 +6573,7 @@ async function submitPrompt(prompt) {
       setError(error.message || "Something went wrong.");
     }
   } finally {
+    await removeBrowserControlIndicator();
     activeRequest = null;
     updateSendButton();
     elements.input.focus();
