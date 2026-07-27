@@ -113,6 +113,23 @@
             </svg>
           </button>
         </div>
+        <section id="missingChatTabNotice" class="missing-chat-tab-notice" role="status" aria-live="polite" hidden>
+          <div class="missing-chat-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 8v5M12 17h.01"/>
+              <path d="M10.3 4.7 3.4 17a2 2 0 0 0 1.8 3h13.6a2 2 0 0 0 1.8-3L13.7 4.7a2 2 0 0 0-3.4 0Z"/>
+            </svg>
+          </div>
+          <div class="missing-chat-tab-copy">
+            <strong>Chat tab not found</strong>
+            <span id="missingChatTabDescription">The tab linked to this chat may have been closed. BrowserChat did not open a new one.</span>
+          </div>
+          <button id="dismissMissingChatTabNotice" class="dismiss-error-button" type="button" aria-label="Dismiss notification">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m7 7 10 10M17 7 7 17"/>
+            </svg>
+          </button>
+        </section>
         <section id="ollamaSetupPanel" class="ollama-setup-panel" aria-labelledby="ollamaSetupTitle" hidden>
           <div class="ollama-setup-heading">
             <div class="ollama-setup-icon" aria-hidden="true">

@@ -1856,6 +1856,53 @@ select {
   overflow-wrap: anywhere;
 }
 
+.missing-chat-tab-notice {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  max-width: 720px;
+  margin: 0 auto 8px;
+  padding: 13px;
+  gap: 10px;
+  background: #fffdf5;
+  border: 1px solid #f2d275;
+  border-radius: 14px;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 5%);
+}
+
+.missing-chat-tab-notice[hidden] { display: none; }
+
+.missing-chat-tab-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #d48806;
+  background: #fff8dc;
+  border: 1px solid #f2d275;
+  border-radius: 10px;
+}
+
+.missing-chat-tab-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.missing-chat-tab-copy strong,
+.missing-chat-tab-copy span { display: block; }
+.missing-chat-tab-copy strong { font-size: 12px; }
+.missing-chat-tab-copy span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .ollama-setup-panel {
   display: grid;
   max-width: 720px;
@@ -3428,6 +3475,12 @@ select {
   cursor: pointer;
 }
 
+.assistant-activity-duration {
+  color: #92928d;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
 .assistant-activity-header:hover {
   color: #363633;
   background: #eeeeeb;
@@ -3758,7 +3811,17 @@ select {
 
 /* Activity hierarchy and disclosure refinements */
 .assistant-activity-header .activity-disclosure-chevron {
+  opacity: 0;
   transition: transform 140ms ease;
+}
+
+.assistant-activity-header:hover .activity-disclosure-chevron,
+.assistant-activity-header:focus-visible .activity-disclosure-chevron {
+  opacity: 1;
+}
+
+.assistant-activity-header.chevron-just-toggled .activity-disclosure-chevron {
+  opacity: 0;
 }
 
 .assistant-activity-header[aria-expanded="true"] .activity-disclosure-chevron {
@@ -3830,6 +3893,10 @@ select {
 .assistant-activity-stack .tool-activity-panel[open]:not(.single-tool) > summary::after {
   opacity: 1;
   transform: rotate(45deg) translateY(-2px);
+}
+
+.assistant-activity-stack details.chevron-just-toggled > summary::after {
+  opacity: 0;
 }
 
 .assistant-activity-stack .tool-activity-panel.single-tool > summary {
@@ -3996,6 +4063,211 @@ select {
   outline: 2px solid #b9b9b4;
   outline-offset: 5px;
   animation: activityFocusFade 2.2s ease forwards;
+}
+
+.activity-dialog-content {
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.activity-dialog-timeline {
+  min-width: 0;
+  padding-left: 0;
+}
+
+.activity-dialog-timeline::before {
+  display: none;
+}
+
+.activity-dialog-timeline .tool-objective-group,
+.activity-dialog-timeline .tool-objective-activities,
+.activity-dialog-timeline .tool-activity-row,
+.activity-dialog-timeline .tool-activity-details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.activity-dialog-timeline .tool-activity-details {
+  width: calc(100% - 21px);
+}
+
+.activity-dialog-timeline .tool-activity-details > summary {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  gap: 7px;
+  color: #777773;
+  font-size: 11px;
+}
+
+.activity-dialog-timeline .tool-activity-details > summary::after {
+  display: block;
+  width: 6px;
+  height: 6px;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+
+.activity-dialog-timeline .tool-activity-details[open] > summary::after {
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.activity-dialog-timeline .tool-activity-body {
+  width: 100%;
+  height: 168px;
+  max-height: 168px;
+  padding: 10px 14px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+
+.activity-dialog-timeline .tool-result-image:not([hidden]) {
+  width: 100%;
+  height: 168px;
+  margin: 10px 0 0;
+  overflow: hidden;
+}
+
+.activity-dialog-timeline .tool-result-image img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.activity-dialog-timeline .tool-step-thinking {
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border: 0;
+}
+
+.activity-dialog-timeline .tool-step-thinking > summary::before {
+  display: none;
+}
+
+.activity-dialog-timeline .tool-step-thinking-content {
+  width: 100%;
+  max-height: 190px;
+  padding: 10px 14px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+
+.activity-dialog-timeline .tool-activity-row[data-status="failed"] .tool-activity-indicator {
+  color: #a9443e;
+  background: transparent;
+  border: 0;
+}
+
+.activity-dialog-timeline .tool-activity-row[data-unsupported="true"] .tool-activity-indicator {
+  color: #9b6b32;
+  background: transparent;
+  border: 0;
+}
+
+.activity-dialog-timeline .tool-activity-label,
+.activity-dialog-timeline .tool-activity-name {
+  min-width: 0;
+}
+
+.activity-dialog-timeline .tool-activity-name {
+  flex: 0 1 auto;
+}
+
+.activity-step-arriving {
+  animation: activityStepArrive 260ms ease-out both;
+}
+
+.activity-dialog-timeline details > summary {
+  cursor: pointer;
+}
+
+.activity-dialog-timeline details > summary::after {
+  display: block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0;
+  transform: rotate(-45deg);
+  transition: opacity 120ms ease, transform 140ms ease;
+}
+
+.activity-dialog-timeline details > summary:hover::after,
+.activity-dialog-timeline details > summary:focus-visible::after {
+  opacity: 1;
+}
+
+.activity-dialog-timeline details[open] > summary::after {
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.activity-dialog-timeline details.chevron-just-toggled > summary::after {
+  opacity: 0;
+}
+
+.activity-dialog-timeline .tool-objective-group {
+  margin-left: 0;
+  padding-left: 0;
+  border: 0;
+}
+
+.activity-dialog-timeline .tool-objective-activities {
+  margin-left: 8px;
+  padding-left: 18px;
+  border-left: 1px solid #deded9;
+}
+
+.activity-dialog-timeline .tool-activity-row {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.activity-dialog-timeline .activity-top-evaluation {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.activity-dialog-timeline .activity-top-evaluation > summary {
+  padding: 0 0 10px;
+  color: #292927;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.activity-dialog-timeline .activity-top-evaluation .tool-objective-evaluation-content {
+  max-height: 190px;
+  margin: 0;
+  padding: 10px 14px;
+  overflow: auto;
+  background: #f6f6f4;
+  border-radius: 9px;
+  scrollbar-gutter: stable;
+}
+
+.activity-dialog-focus {
+  outline: 0;
+  animation: none;
+}
+
+@keyframes activityStepArrive {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes activityFocusFade {

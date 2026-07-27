@@ -90,6 +90,9 @@ const elements = {
   errorBanner: document.querySelector("#errorBanner"),
   errorBannerMessage: document.querySelector("#errorBannerMessage"),
   dismissErrorButton: document.querySelector("#dismissErrorButton"),
+  missingChatTabNotice: document.querySelector("#missingChatTabNotice"),
+  missingChatTabDescription: document.querySelector("#missingChatTabDescription"),
+  dismissMissingChatTabNotice: document.querySelector("#dismissMissingChatTabNotice"),
   ollamaSetupPanel: document.querySelector("#ollamaSetupPanel"),
   ollamaSetupTitle: document.querySelector("#ollamaSetupTitle"),
   ollamaSetupDescription: document.querySelector("#ollamaSetupDescription"),
@@ -214,6 +217,15 @@ let cloudPrivacyAccepted = false;
 let checkingCloudModel = false;
 let ollamaUnavailable = false;
 let ollamaRuntimeError = false;
+let activeActivityStack = null;
+let activeActivityFocusKey = null;
+let activityDialogObserver = null;
+let activityDialogSyncFrame = 0;
+let activityDialogFollowLatest = true;
+let activityDialogProgrammaticScroll = false;
+let activityDialogLatestKey = null;
+let activityDialogScrollTimer = 0;
+const activityPreviewFollowState = new Map();
 const modelSelectMeasureCanvas = document.createElement("canvas");
 const OLLAMA_SERVE_COMMAND = 'OLLAMA_ORIGINS="chrome-extension://*" ollama serve';
 
@@ -691,6 +703,7 @@ function renderCurrentConversation() {
       pageUrl: message.pageUrl,
       responseId: message.responseId,
       createdAt: message.createdAt,
+      startedAt: message.startedAt,
       finishReason: message.finishReason,
       stoppedAt: message.stoppedAt
     });
@@ -714,6 +727,7 @@ async function switchToChat(chatId) {
   setDomContextEnabled(false);
   setPromptText();
   setError("");
+  elements.missingChatTabNotice.hidden = true;
   renderChatHeader();
   renderChatMenu();
   renderObjectivePlan(chat.objectivePlan);
@@ -721,50 +735,30 @@ async function switchToChat(chatId) {
   setChatMenu(false);
   await persistChats();
 
-  let targetTabId = chat.tabId;
-  if (targetTabId) {
-    try {
-      const tab = await chrome.tabs.get(targetTabId);
-      const updateProperties = { active: true };
-      if (chat.pageUrl && tab.url !== chat.pageUrl) {
-        updateProperties.url = chat.pageUrl;
-      }
-      await chrome.tabs.update(targetTabId, updateProperties);
-      if (tab.windowId != null) {
-        await chrome.windows.update(tab.windowId, { focused: true });
-      }
-    } catch {
-      targetTabId = null;
-    }
+  let targetTab = null;
+  if (chat.pageUrl) {
+    const tabs = await chrome.tabs.query({});
+    targetTab = tabs.find((tab) => tab.id === chat.tabId && tab.url === chat.pageUrl) ||
+      tabs.find((tab) => tab.url === chat.pageUrl) ||
+      null;
   }
 
-  if (!targetTabId && chat.pageUrl) {
-    try {
-      let tab;
-      try {
-        tab = await chrome.tabs.create({
-          url: chat.pageUrl,
-          active: true,
-          ...(Number.isInteger(chat.windowId) ? { windowId: chat.windowId } : {})
-        });
-      } catch {
-        tab = await chrome.tabs.create({
-          url: chat.pageUrl,
-          active: true
-        });
-      }
-      targetTabId = tab.id;
-      if (tab.windowId != null) {
-        await chrome.windows.update(tab.windowId, { focused: true });
-      }
-    } catch {
-      setError("BrowserChat could not reopen this chat’s last site.");
+  if (targetTab?.id != null) {
+    await chrome.tabs.update(targetTab.id, { active: true });
+    if (targetTab.windowId != null) {
+      await chrome.windows.update(targetTab.windowId, { focused: true });
     }
-  } else if (!targetTabId) {
-    setError("This chat does not have a sent-from site yet.");
+    chat.tabId = targetTab.id;
+    chat.windowId = targetTab.windowId ?? null;
+    await persistChats();
+  } else {
+    elements.missingChatTabDescription.textContent = chat.pageUrl
+      ? "The tab linked to this chat may have been closed. BrowserChat did not open a new one."
+      : "This chat does not have a linked site yet. BrowserChat did not open a new tab.";
+    elements.missingChatTabNotice.hidden = false;
   }
 
-  await refreshSiteAccess(targetTabId);
+  await refreshSiteAccess(targetTab?.id);
   elements.input.focus();
 }
 
@@ -2072,8 +2066,15 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
   header.setAttribute("aria-expanded", "true");
   header.innerHTML = `
     <span class="assistant-activity-status">Working</span>
+    <span class="assistant-activity-duration" aria-label="Elapsed time"></span>
     <svg class="activity-disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
   `;
+  const duration = header.querySelector(".assistant-activity-duration");
+  const updateDuration = () => {
+    duration.textContent = formatActivityDuration(stack);
+  };
+  updateDuration();
+  const durationTimer = window.setInterval(updateDuration, 1000);
 
   const body = document.createElement("div");
   body.className = "assistant-activity-body";
@@ -2085,6 +2086,10 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
   };
   header.addEventListener("click", () => {
     setExpanded(header.getAttribute("aria-expanded") !== "true");
+    header.classList.add("chevron-just-toggled");
+  });
+  header.addEventListener("pointerleave", () => {
+    header.classList.remove("chevron-just-toggled");
   });
   body.addEventListener("click", (event) => {
     const leaf = event.target.closest("[data-activity-key]");
@@ -2102,15 +2107,31 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
     event.preventDefault();
     openActivityDialog(stack, leaf.dataset.activityKey);
   });
-  return { stack, header, body, startedAt, setExpanded };
+  body.addEventListener("toggle", (event) => {
+    if (event.target.matches?.("details")) {
+      event.target.classList.add("chevron-just-toggled");
+    }
+  }, true);
+  body.addEventListener("pointerleave", (event) => {
+    if (event.target.matches?.("details")) {
+      event.target.classList.remove("chevron-just-toggled");
+    }
+  }, true);
+  return { stack, header, body, startedAt, setExpanded, duration, durationTimer };
 }
 
-function finishActivityStack(activityStack) {
+function finishActivityStack(activityStack, finishedAt = Date.now()) {
   if (!activityStack?.stack) return;
+  window.clearInterval(activityStack.durationTimer);
   activityStack.stack.classList.remove("streaming");
-  activityStack.stack.dataset.finishedAt = String(Date.now());
+  if (!activityStack.stack.dataset.finishedAt) {
+    activityStack.stack.dataset.finishedAt = String(finishedAt);
+  }
   const label = activityStack.header.querySelector(".assistant-activity-status");
   if (label) label.textContent = "Worked";
+  if (activityStack.duration) {
+    activityStack.duration.textContent = formatActivityDuration(activityStack.stack);
+  }
   for (const toolPanel of activityStack.body.querySelectorAll(".tool-activity-panel")) {
     if (!toolPanel.classList.contains("single-tool")) toolPanel.open = false;
   }
@@ -2121,40 +2142,207 @@ function formatActivityDuration(stack) {
   const start = Number(stack?.dataset.startedAt);
   const end = Number(stack?.dataset.finishedAt) || Date.now();
   if (!Number.isFinite(start)) return "";
-  const seconds = Math.max(1, Math.round((end - start) / 1000));
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ${seconds % 60}s`;
 }
 
-function openActivityDialog(stack, activityKey = null) {
+function annotateActivityDisclosures(root) {
+  root.querySelectorAll("details").forEach((details, index) => {
+    const activityKey =
+      details.closest("[data-activity-key]")?.dataset.activityKey || "activity";
+    const kind = details.classList.contains("thinking-panel")
+      ? "initial-thinking"
+      : details.classList.contains("skill-usage-panel")
+      ? "skills"
+      : details.classList.contains("skill-usage-row")
+      ? "skill"
+      : details.classList.contains("tool-activity-panel")
+      ? "tools"
+      : details.classList.contains("tool-activity-details")
+      ? "details"
+      : details.classList.contains("tool-step-thinking")
+      ? "tool-thinking"
+      : details.classList.contains("tool-objective-evaluation")
+      ? `evaluation-${details.closest("[data-objective-id]")?.dataset.objectiveId || index}`
+      : `section-${index}`;
+    details.dataset.disclosureKey = `${activityKey}:${kind}`;
+  });
+}
+
+function getActivityDisclosureState() {
+  return new Map(
+    [...elements.activityDialogContent.querySelectorAll("details[data-disclosure-key]")]
+      .map((details) => [
+        details.dataset.disclosureKey,
+        {
+          open: details.open,
+          streaming: details.classList.contains("streaming")
+        }
+      ])
+  );
+}
+
+function shouldOpenActivityDisclosure(details) {
+  if (details.classList.contains("tool-activity-panel")) return true;
+  if (
+    details.classList.contains("thinking-panel") ||
+    details.classList.contains("tool-step-thinking") ||
+    details.classList.contains("tool-objective-evaluation")
+  ) {
+    return details.classList.contains("streaming");
+  }
+  return false;
+}
+
+function getActivityPreviewKey(element) {
+  const disclosureKey =
+    element.closest("details[data-disclosure-key]")?.dataset.disclosureKey;
+  if (disclosureKey) return disclosureKey;
+  const activityKey =
+    element.closest("[data-activity-key]")?.dataset.activityKey || "activity";
+  const kind = element.classList.contains("tool-step-thinking-content")
+    ? "thinking"
+    : element.classList.contains("tool-objective-evaluation-content")
+    ? "evaluation"
+    : "details";
+  return `${activityKey}:${kind}`;
+}
+
+function scrollActivityDialogToLatest({ smooth = true } = {}) {
+  const scroller = elements.activityDialogContent;
+  activityDialogProgrammaticScroll = true;
+  scroller.scrollTo({
+    top: scroller.scrollHeight,
+    behavior: smooth ? "smooth" : "auto"
+  });
+  clearTimeout(activityDialogScrollTimer);
+  activityDialogScrollTimer = setTimeout(() => {
+    activityDialogProgrammaticScroll = false;
+    activityDialogScrollTimer = 0;
+  }, smooth ? 450 : 0);
+}
+
+function renderActivityDialog() {
+  const stack = activeActivityStack;
   if (!stack || !elements.activityDialog) return;
+  const disclosureState = getActivityDisclosureState();
   const clone = stack.querySelector(".assistant-activity-body")?.cloneNode(true);
   if (!clone) return;
   clone.hidden = false;
   clone.classList.add("activity-dialog-timeline");
+  clone.querySelectorAll(".tool-objective-evaluation:not([hidden])").forEach(
+    (evaluation) => {
+      evaluation.classList.add("activity-top-evaluation");
+      evaluation.dataset.activityKey =
+        `evaluation-${evaluation.closest("[data-objective-id]")?.dataset.objectiveId || "latest"}`;
+      clone.append(evaluation);
+    }
+  );
+  annotateActivityDisclosures(clone);
   clone.querySelectorAll("details:not([hidden])").forEach((details) => {
-    details.open = true;
-  });
-  clone.querySelectorAll("summary").forEach((summary) => {
-    summary.setAttribute("tabindex", "-1");
+    const previous = disclosureState.get(details.dataset.disclosureKey);
+    const thinkingEnded =
+      previous?.streaming &&
+      !details.classList.contains("streaming") &&
+      (
+        details.classList.contains("thinking-panel") ||
+        details.classList.contains("tool-step-thinking") ||
+        details.classList.contains("tool-objective-evaluation")
+      );
+    details.open = thinkingEnded
+      ? false
+      : previous
+      ? previous.open
+      : shouldOpenActivityDisclosure(details);
   });
   elements.activityDialogTitle.textContent = stack.classList.contains("streaming")
     ? "Activity"
     : "Activity complete";
   elements.activityDialogDuration.textContent = formatActivityDuration(stack);
   elements.activityDialogContent.replaceChildren(clone);
-  if (!elements.activityDialog.open) elements.activityDialog.showModal();
-  if (activityKey) {
+  clone.querySelectorAll(`
+    .tool-step-thinking.streaming .tool-step-thinking-content,
+    .tool-objective-evaluation.streaming .tool-objective-evaluation-content
+  `).forEach((preview) => {
+    const previewKey = getActivityPreviewKey(preview);
+    if (activityPreviewFollowState.get(previewKey) !== false) {
+      preview.scrollTop = preview.scrollHeight;
+    }
+  });
+
+  const activityLeaves = [...clone.querySelectorAll("[data-activity-key]")];
+  const latest = activityLeaves.at(-1);
+  const latestKey = latest?.dataset.activityKey || null;
+  const latestSignature = latestKey
+    ? [
+        latestKey,
+        clone.querySelectorAll(".tool-step-thinking:not([hidden])").length,
+        clone.querySelectorAll(".tool-objective-evaluation:not([hidden])").length
+      ].join(":")
+    : null;
+  const hasNewActivityStep =
+    Boolean(latestSignature) && latestSignature !== activityDialogLatestKey;
+  if (hasNewActivityStep) {
+    latest.classList.add("activity-step-arriving");
+    activityDialogLatestKey = latestSignature;
+  }
+
+  if (activeActivityFocusKey) {
+    const focusKey = activeActivityFocusKey;
+    activeActivityFocusKey = null;
     requestAnimationFrame(() => {
-      const target = [...clone.querySelectorAll("[data-activity-key]")].find(
-        (node) => node.dataset.activityKey === activityKey
+      const target = activityLeaves.find(
+        (node) => node.dataset.activityKey === focusKey
       );
       if (!target) return;
-      target.classList.add("activity-dialog-focus");
       target.scrollIntoView({ block: "center", behavior: "smooth" });
     });
+  } else if (activityDialogFollowLatest) {
+    requestAnimationFrame(() => {
+      scrollActivityDialogToLatest({ smooth: hasNewActivityStep });
+    });
   }
+}
+
+function queueActivityDialogRender() {
+  if (activityDialogSyncFrame) return;
+  activityDialogSyncFrame = requestAnimationFrame(() => {
+    activityDialogSyncFrame = 0;
+    renderActivityDialog();
+  });
+}
+
+function disconnectActivityDialog() {
+  activityDialogObserver?.disconnect();
+  activityDialogObserver = null;
+  if (activityDialogSyncFrame) cancelAnimationFrame(activityDialogSyncFrame);
+  activityDialogSyncFrame = 0;
+  clearTimeout(activityDialogScrollTimer);
+  activityDialogScrollTimer = 0;
+  activityDialogProgrammaticScroll = false;
+  activeActivityStack = null;
+  activeActivityFocusKey = null;
+  activityDialogLatestKey = null;
+  activityPreviewFollowState.clear();
+}
+
+function openActivityDialog(stack, activityKey = null) {
+  if (!stack || !elements.activityDialog) return;
+  disconnectActivityDialog();
+  activeActivityStack = stack;
+  activeActivityFocusKey = activityKey;
+  activityDialogFollowLatest = !activityKey;
+  renderActivityDialog();
+  activityDialogObserver = new MutationObserver(queueActivityDialogRender);
+  activityDialogObserver.observe(stack, {
+    attributes: true,
+    characterData: true,
+    childList: true,
+    subtree: true
+  });
+  if (!elements.activityDialog.open) elements.activityDialog.showModal();
 }
 
 function createSkillUsagePanel(skills = []) {
@@ -2370,11 +2558,10 @@ function renderToolActivity(toolUI, activity) {
     details.className = "tool-activity-details";
 
     const detailsSummary = document.createElement("summary");
-    detailsSummary.textContent = "Details";
+    detailsSummary.textContent = "Show details";
 
     const body = document.createElement("div");
     body.className = "tool-activity-body";
-    details.append(detailsSummary, body);
 
     const imagePreview = document.createElement("button");
     imagePreview.className = "tool-result-image";
@@ -2390,6 +2577,7 @@ function renderToolActivity(toolUI, activity) {
       event.stopPropagation();
       openImagePreview(image);
     });
+    details.append(detailsSummary, body, imagePreview);
 
     const thinking = document.createElement("details");
     thinking.className = "tool-step-thinking";
@@ -2401,7 +2589,7 @@ function renderToolActivity(toolUI, activity) {
     thinking.append(thinkingSummary, thinkingContent);
 
     header.append(indicator, label, toolName);
-    row.append(header, details, imagePreview, thinking);
+    row.append(header, details, thinking);
     ensureToolObjectiveGroup(toolUI, activity).activities.append(row);
     activityUI = {
       ...activity,
@@ -2825,15 +3013,17 @@ function appendMessage(role, content = "", options = {}) {
       options.stepEvaluations?.length
     );
     const activityStack = hasActivity
-      ? createActivityStack({ startedAt: options.createdAt || Date.now() })
+      ? createActivityStack({
+          startedAt: options.startedAt || options.createdAt || Date.now()
+        })
       : null;
     if (activityStack) {
-      activityStack.stack.classList.remove("streaming");
-      activityStack.stack.dataset.finishedAt = String(
-        options.stoppedAt ? new Date(options.stoppedAt).getTime() : Date.now()
+      finishActivityStack(
+        activityStack,
+        options.stoppedAt
+          ? new Date(options.stoppedAt).getTime()
+          : new Date(options.createdAt || Date.now()).getTime()
       );
-      activityStack.header.querySelector(".assistant-activity-status").textContent = "Worked";
-      activityStack.setExpanded(false);
       contentWrap.append(activityStack.stack);
     }
     if (options.sourceReferences?.length) {
@@ -6595,18 +6785,22 @@ async function runToolCallingLoop(
     onToolCallFinish?.({ ...owner });
   };
 
-  const streamFinalAnswer = async () => {
+  const streamFinalAnswer = async ({
+    instruction =
+      "The user selected Answer now. Do not call or wait for more tools. Give the best final answer possible using only the conversation and completed tool results available so far.",
+    blockReason =
+      "The user ended tool execution and requested the current answer."
+  } = {}) => {
     if (getActiveObjective(objectivePlan)) {
       blockRemainingObjectives(
         objectivePlan,
-        "The user ended tool execution and requested the current answer."
+        blockReason
       );
       onObjectivePlanChange?.(objectivePlan);
     }
     messages.push({
       role: "system",
-      content:
-        "The user selected Answer now. Do not call or wait for more tools. Give the best final answer possible using only the conversation and completed tool results available so far."
+      content: instruction
     });
 
     const response = await streamChatRound(messages, signal, {
@@ -6733,20 +6927,27 @@ async function runToolCallingLoop(
         objectivePlan.updatedAt = Date.now();
         onObjectivePlanChange?.(objectivePlan);
       }
-      if (activeObjective && response.message.content) {
-        const evaluation = {
-          ...evaluationContext,
-          content: response.message.content,
-          terminal: true
-        };
-        stepEvaluations.push(evaluation);
-        onStepContent?.({ ...evaluation, streaming: false });
-      } else {
-        displayedContent = [displayedContent, response.message.content]
-          .filter(Boolean)
-          .join("\n\n");
-        onContent(displayedContent, combinedThinking);
+      if (activeObjective) {
+        if (response.message.content) {
+          const evaluation = {
+            ...evaluationContext,
+            content: response.message.content,
+            terminal: true
+          };
+          stepEvaluations.push(evaluation);
+          onStepContent?.({ ...evaluation, streaming: false });
+        }
+        return streamFinalAnswer({
+          instruction:
+            "Tool execution has reached a bounded stop because the active objective produced no further tool action. Give the user a clear final answer now using the completed evidence. State any unavailable result or access limitation plainly. Do not call or wait for more tools.",
+          blockReason:
+            "The executor produced no further tool action for the active objective."
+        });
       }
+      displayedContent = [displayedContent, response.message.content]
+        .filter(Boolean)
+        .join("\n\n");
+      onContent(displayedContent, combinedThinking);
       return {
         content: displayedContent,
         thinking: combinedThinking,
@@ -6979,6 +7180,7 @@ async function generateTitleForChat(chatId, model) {
 async function submitPrompt(prompt) {
   if (!prompt || activeRequest || !elements.modelSelect.value) return;
 
+  const responseStartedAt = Date.now();
   const chatId = activeChatId;
   await rememberSentSiteForChat(chatId);
   await refreshSiteAccess();
@@ -7226,8 +7428,6 @@ async function submitPrompt(prompt) {
             assistantUI.thinkingPanel.hidden = true;
           }
         }
-        finishActivityStack(assistantUI.activityStack);
-
         renderMarkdown(assistantUI.message, text);
         assistantUI.message.classList.remove("pending");
         scrollToLatest();
@@ -7331,6 +7531,8 @@ async function submitPrompt(prompt) {
       role: "assistant",
       responseId: crypto.randomUUID(),
       createdAt: responseCreatedAt,
+      startedAt: responseStartedAt,
+      stoppedAt: responseCreatedAt,
       model: selectedModel,
       pageUrl: currentSite.pageUrl || null,
       content: answer.content,
@@ -7405,6 +7607,7 @@ async function submitPrompt(prompt) {
     assistantUI.processingStatus.hidden = true;
     assistantUI.message.classList.remove("pending");
     assistantUI.thinkingPanel.classList.remove("streaming");
+    finishActivityStack(assistantUI.activityStack);
     if (error.name === "AbortError") {
       setActivitySummary(assistantUI.thinkingSummary, "Thinking stopped", "thinking");
       assistantUI.thinkingPanel.open = false;
@@ -7427,6 +7630,7 @@ async function submitPrompt(prompt) {
         role: "assistant",
         responseId: crypto.randomUUID(),
         createdAt: stoppedAt,
+        startedAt: responseStartedAt,
         model: selectedModel,
         pageUrl: currentSite.pageUrl || null,
         content: partialContent,
@@ -7640,6 +7844,9 @@ elements.cloudModelSecondaryButton.addEventListener("click", () => {
 });
 
 elements.dismissErrorButton.addEventListener("click", () => setError(""));
+elements.dismissMissingChatTabNotice.addEventListener("click", () => {
+  elements.missingChatTabNotice.hidden = true;
+});
 
 elements.thinkingSelect.addEventListener("change", async () => {
   await chrome.storage.local.set({
@@ -8020,6 +8227,43 @@ elements.activityDialog.addEventListener("cancel", (event) => {
 elements.activityDialog.addEventListener("pointerdown", (event) => {
   if (event.target === elements.activityDialog) elements.activityDialog.close();
 });
+
+elements.activityDialog.addEventListener("close", disconnectActivityDialog);
+
+elements.activityDialogContent.addEventListener("scroll", () => {
+  if (activityDialogProgrammaticScroll) return;
+  const scroller = elements.activityDialogContent;
+  const distanceFromBottom =
+    scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  activityDialogFollowLatest = distanceFromBottom <= 36;
+}, { passive: true });
+
+elements.activityDialogContent.addEventListener("scroll", (event) => {
+  const preview = event.target.closest?.(`
+    .tool-activity-body,
+    .tool-step-thinking-content,
+    .tool-objective-evaluation-content
+  `);
+  if (!preview) return;
+  const distanceFromBottom =
+    preview.scrollHeight - preview.scrollTop - preview.clientHeight;
+  activityPreviewFollowState.set(
+    getActivityPreviewKey(preview),
+    distanceFromBottom <= 20
+  );
+}, { capture: true, passive: true });
+
+elements.activityDialogContent.addEventListener("toggle", (event) => {
+  const details = event.target.closest?.("details");
+  if (!details) return;
+  details.classList.add("chevron-just-toggled");
+}, true);
+
+elements.activityDialogContent.addEventListener("pointerleave", (event) => {
+  if (event.target.matches?.("details")) {
+    event.target.classList.remove("chevron-just-toggled");
+  }
+}, true);
 
 elements.activityDialogContent.addEventListener("click", (event) => {
   const image = event.target.closest("[data-preview-image]");
