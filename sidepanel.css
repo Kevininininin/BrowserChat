@@ -3773,10 +3773,12 @@ select {
 
 .activity-dialog-timeline .thinking-content {
   max-height: none;
-  padding: 0 0 0 1px;
+  margin-left: 3px;
+  padding: 0 0 0 17px;
   color: #656560;
   font-size: 12px;
   line-height: 1.6;
+  border-left: 1px solid #deded9;
 }
 
 .activity-dialog-timeline .skill-usage-list,

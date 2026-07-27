@@ -2185,15 +2185,7 @@ function getActivityDisclosureState() {
 }
 
 function shouldOpenActivityDisclosure(details) {
-  if (details.classList.contains("tool-activity-panel")) return true;
-  if (
-    details.classList.contains("thinking-panel") ||
-    details.classList.contains("tool-step-thinking") ||
-    details.classList.contains("tool-objective-evaluation")
-  ) {
-    return details.classList.contains("streaming");
-  }
-  return false;
+  return !details.hidden;
 }
 
 function getActivityPreviewKey(element) {
@@ -2243,17 +2235,7 @@ function renderActivityDialog() {
   annotateActivityDisclosures(clone);
   clone.querySelectorAll("details:not([hidden])").forEach((details) => {
     const previous = disclosureState.get(details.dataset.disclosureKey);
-    const thinkingEnded =
-      previous?.streaming &&
-      !details.classList.contains("streaming") &&
-      (
-        details.classList.contains("thinking-panel") ||
-        details.classList.contains("tool-step-thinking") ||
-        details.classList.contains("tool-objective-evaluation")
-      );
-    details.open = thinkingEnded
-      ? false
-      : previous
+    details.open = previous
       ? previous.open
       : shouldOpenActivityDisclosure(details);
   });
@@ -2331,6 +2313,7 @@ function disconnectActivityDialog() {
 function openActivityDialog(stack, activityKey = null) {
   if (!stack || !elements.activityDialog) return;
   disconnectActivityDialog();
+  elements.activityDialogContent.replaceChildren();
   activeActivityStack = stack;
   activeActivityFocusKey = activityKey;
   activityDialogFollowLatest = !activityKey;
