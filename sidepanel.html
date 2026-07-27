@@ -113,6 +113,35 @@
             </svg>
           </button>
         </div>
+        <section id="ollamaSetupPanel" class="ollama-setup-panel" aria-labelledby="ollamaSetupTitle" hidden>
+          <div class="ollama-setup-heading">
+            <div class="ollama-setup-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M9.5 20h5"/>
+              </svg>
+            </div>
+            <div>
+              <strong id="ollamaSetupTitle">Reconnect BrowserChat to Ollama</strong>
+              <span id="ollamaSetupDescription">Run the following command in Terminal so BrowserChat can communicate with Ollama.</span>
+            </div>
+          </div>
+          <button id="copyOllamaServeCommand" class="ollama-command" type="button" aria-label="Copy Ollama server command">
+            <code>OLLAMA_ORIGINS="chrome-extension://*" ollama serve</code>
+            <span class="copy-command-label" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+            </span>
+          </button>
+          <div class="ollama-setup-actions">
+            <button id="openOllamaSetupGuide" class="text-button icon-text-button" type="button">
+              <img src="assets/material-symbols--book.svg" alt="" aria-hidden="true" />
+              <span>Full setup guide</span>
+            </button>
+            <button id="checkOllamaConnection" class="secondary-button icon-text-button" type="button">
+              <img src="assets/line-md--link.svg" alt="" aria-hidden="true" />
+              <span>Check again</span>
+            </button>
+          </div>
+        </section>
         <div id="skillPicker" class="skill-picker-popover" role="listbox" aria-label="Available skills" hidden>
           <div class="skill-picker-heading">Skills</div>
           <div id="skillPickerList" class="skill-picker-list"></div>
@@ -357,6 +386,81 @@
       <div class="preview-actions">
         <button id="cancelFileChunkButton" class="secondary-button" type="button">Cancel</button>
         <button id="saveFileChunkButton" class="primary-button" type="button">Save</button>
+      </div>
+    </dialog>
+
+    <dialog id="ollamaSetupDialog" class="context-preview-dialog ollama-setup-dialog">
+      <div class="preview-header">
+        <div>
+          <span class="preview-eyebrow">First-time setup</span>
+          <h2>Set up Ollama for BrowserChat</h2>
+        </div>
+        <button id="closeOllamaSetupDialog" class="icon-button" type="button" aria-label="Close Ollama setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="ollama-guide">
+        <section class="ollama-guide-intro">
+          <strong>Run AI models locally, then chat with them from this extension.</strong>
+          <p>Ollama must be installed, a chat model must be downloaded, and its local server must allow requests from Chrome extensions.</p>
+        </section>
+        <ol class="ollama-guide-steps">
+          <li>
+            <div class="ollama-step-number">1</div>
+            <div>
+              <h3>Install Ollama</h3>
+              <p>Download the installer for macOS, Windows, or Linux, finish installation, and open Ollama once.</p>
+              <a class="secondary-button ollama-download-link" href="https://ollama.com/download" target="_blank" rel="noreferrer">Download Ollama</a>
+            </div>
+          </li>
+          <li>
+            <div class="ollama-step-number">2</div>
+            <div>
+              <h3>Download a chat model</h3>
+              <p>In Terminal, pull one model. Smaller models are faster and use less memory.</p>
+              <button class="ollama-command ollama-guide-command" type="button" data-copy-command="ollama pull gemma4:e4b" aria-label="Copy model download command">
+                <code>ollama pull gemma4:e4b</code>
+                <span class="copy-command-label" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span>
+              </button>
+              <p class="ollama-model-note">BrowserChat works with Ollama chat models. Our first suggestion is <code>gemma4:e4b</code>; other good starting points include <code>qwen3:4b</code>, <code>gemma3:4b</code>, and <code>llama3.2:3b</code>. Vision features require a vision-capable model.</p>
+            </div>
+          </li>
+          <li>
+            <div class="ollama-step-number">3</div>
+            <div>
+              <h3>Allow browser communication</h3>
+              <p>Quit any Ollama server already running, then start it from Terminal with extension origins enabled. Keep this Terminal window open.</p>
+              <button class="ollama-command ollama-guide-command" type="button" data-copy-command='OLLAMA_ORIGINS="chrome-extension://*" ollama serve' aria-label="Copy Ollama server command">
+                <code>OLLAMA_ORIGINS="chrome-extension://*" ollama serve</code>
+                <span class="copy-command-label" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span>
+              </button>
+            </div>
+          </li>
+          <li>
+            <div class="ollama-step-number">4</div>
+            <div>
+              <h3>Return and connect</h3>
+              <p>Come back to BrowserChat and check again. Your downloaded models will appear in the model picker.</p>
+              <button id="checkOllamaFromGuide" class="primary-button icon-text-button" type="button">
+                <img src="assets/line-md--link.svg" alt="" aria-hidden="true" />
+                <span>Check connection</span>
+              </button>
+              <div id="ollamaGuideConnectionStatus" class="ollama-guide-status" role="status" aria-live="polite" hidden></div>
+            </div>
+          </li>
+        </ol>
+        <aside class="ollama-troubleshooting">
+          <strong>Still not connecting?</strong>
+          <ul>
+            <li>Make sure another Ollama process is not already using port <code>11434</code>.</li>
+            <li>An HTTP 403 usually means Ollama was started without the <code>OLLAMA_ORIGINS</code> setting above.</li>
+            <li>If a model is missing, run <code>ollama list</code> to confirm it finished downloading.</li>
+            <li>If chat stopped working after it worked before, restart the server and check again here.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="preview-actions">
+        <button id="doneOllamaSetupDialog" class="primary-button" type="button">Done</button>
       </div>
     </dialog>
 

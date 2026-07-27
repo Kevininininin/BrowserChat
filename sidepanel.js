@@ -88,6 +88,17 @@ const elements = {
   errorBanner: document.querySelector("#errorBanner"),
   errorBannerMessage: document.querySelector("#errorBannerMessage"),
   dismissErrorButton: document.querySelector("#dismissErrorButton"),
+  ollamaSetupPanel: document.querySelector("#ollamaSetupPanel"),
+  ollamaSetupTitle: document.querySelector("#ollamaSetupTitle"),
+  ollamaSetupDescription: document.querySelector("#ollamaSetupDescription"),
+  copyOllamaServeCommand: document.querySelector("#copyOllamaServeCommand"),
+  openOllamaSetupGuide: document.querySelector("#openOllamaSetupGuide"),
+  checkOllamaConnection: document.querySelector("#checkOllamaConnection"),
+  ollamaSetupDialog: document.querySelector("#ollamaSetupDialog"),
+  closeOllamaSetupDialog: document.querySelector("#closeOllamaSetupDialog"),
+  doneOllamaSetupDialog: document.querySelector("#doneOllamaSetupDialog"),
+  checkOllamaFromGuide: document.querySelector("#checkOllamaFromGuide"),
+  ollamaGuideConnectionStatus: document.querySelector("#ollamaGuideConnectionStatus"),
   connectionDot: document.querySelector("#connectionDot"),
   chatPickerButton: document.querySelector("#chatPickerButton"),
   chatMenu: document.querySelector("#chatMenu"),
@@ -194,7 +205,10 @@ let currentSite = {
 let availableOllamaModels = new Set();
 let cloudPrivacyAccepted = false;
 let checkingCloudModel = false;
+let ollamaUnavailable = false;
+let ollamaRuntimeError = false;
 const modelSelectMeasureCanvas = document.createElement("canvas");
+const OLLAMA_SERVE_COMMAND = 'OLLAMA_ORIGINS="chrome-extension://*" ollama serve';
 
 function sizeModelSelectToCurrentOption() {
   const select = elements.modelSelect;
@@ -825,9 +839,39 @@ async function initializeChats() {
   await persistChats();
 }
 
-function setError(message = "") {
+function setError(message = "", { ollama = false } = {}) {
   elements.errorBannerMessage.textContent = message;
   elements.errorBanner.hidden = !message;
+  ollamaRuntimeError = Boolean(message) && (ollama ||
+    /ollama/i.test(message) ||
+    /http\s+\d{3}/i.test(message) ||
+    /failed to fetch|network error/i.test(message)
+  );
+  renderOllamaSetupPanel();
+}
+
+function renderOllamaSetupPanel() {
+  const visible = ollamaUnavailable || ollamaRuntimeError;
+  elements.ollamaSetupPanel.hidden = !visible;
+  if (!visible) return;
+  elements.ollamaSetupTitle.textContent = ollamaUnavailable
+    ? "Reconnect BrowserChat to Ollama"
+    : "Check your Ollama setup";
+  elements.ollamaSetupDescription.textContent = ollamaUnavailable
+    ? "Run the following command in Terminal so BrowserChat can communicate with Ollama."
+    : "This error may mean the Ollama server stopped or needs browser communication enabled.";
+}
+
+async function copyCommand(button, command) {
+  const label = button.querySelector("span");
+  const originalLabel = label.innerHTML;
+  try {
+    await navigator.clipboard.writeText(command);
+    label.innerHTML = '<svg viewBox="0 0 24 24"><path d="m5 12.5 4 4L19 6.5"/></svg>';
+    window.setTimeout(() => { label.innerHTML = originalLabel; }, 1800);
+  } catch {
+    label.innerHTML = originalLabel;
+  }
 }
 
 function getFileAttachmentStatus(attachment) {
@@ -3053,9 +3097,12 @@ async function loadModels() {
     elements.thinkingSelect.value =
       saved.thinkingEnabled === false ? "off" : "on";
     setConnectionStatus("online", "Connected to Ollama");
+    ollamaUnavailable = false;
+    ollamaRuntimeError = false;
     setError("");
     renderCloudModelBanner();
   } catch (error) {
+    ollamaUnavailable = true;
     availableOllamaModels = new Set();
     elements.modelSelect.replaceChildren(new Option("Ollama unavailable", ""));
     elements.cloudModelBanner.hidden = true;
@@ -3066,6 +3113,7 @@ async function loadModels() {
         ? getOllamaErrorMessage(error)
         : "Couldn’t connect to Ollama. Start it with Chrome-extension origins enabled, then reopen this panel."
     );
+    renderOllamaSetupPanel();
   } finally {
     updateSendButton();
   }
@@ -7009,7 +7057,7 @@ async function submitPrompt(prompt) {
         assistantUI.thinkingPanel.hidden = true;
       }
       assistantUI.message.textContent = "I couldn’t complete that request.";
-      setError(getOllamaErrorMessage(error, selectedModel));
+      setError(getOllamaErrorMessage(error, selectedModel), { ollama: true });
     }
   } finally {
     await removeBrowserControlIndicator();
@@ -7412,6 +7460,52 @@ elements.sourcePreviewDialog.addEventListener("click", (event) => {
     elements.sourcePreviewDialog.close();
   }
 });
+
+elements.copyOllamaServeCommand.addEventListener("click", () => {
+  void copyCommand(elements.copyOllamaServeCommand, OLLAMA_SERVE_COMMAND);
+});
+elements.openOllamaSetupGuide.addEventListener("click", () => {
+  elements.ollamaSetupDialog.showModal();
+});
+elements.checkOllamaConnection.addEventListener("click", async () => {
+  elements.checkOllamaConnection.disabled = true;
+  elements.checkOllamaConnection.querySelector("span").textContent = "Checking…";
+  await loadModels();
+  elements.checkOllamaConnection.disabled = false;
+  elements.checkOllamaConnection.querySelector("span").textContent = "Check again";
+});
+elements.ollamaSetupDialog.addEventListener("click", (event) => {
+  if (event.target === elements.ollamaSetupDialog) {
+    elements.ollamaSetupDialog.close();
+  }
+});
+elements.closeOllamaSetupDialog.addEventListener("click", () => {
+  elements.ollamaSetupDialog.close();
+});
+elements.doneOllamaSetupDialog.addEventListener("click", () => {
+  elements.ollamaSetupDialog.close();
+});
+elements.checkOllamaFromGuide.addEventListener("click", async () => {
+  elements.checkOllamaFromGuide.disabled = true;
+  elements.checkOllamaFromGuide.querySelector("span").textContent = "Checking…";
+  elements.ollamaGuideConnectionStatus.hidden = true;
+  await loadModels();
+  elements.checkOllamaFromGuide.disabled = false;
+  elements.checkOllamaFromGuide.querySelector("span").textContent = ollamaUnavailable
+    ? "Try again"
+    : "Connected";
+  elements.ollamaGuideConnectionStatus.hidden = false;
+  elements.ollamaGuideConnectionStatus.classList.toggle("success", !ollamaUnavailable);
+  elements.ollamaGuideConnectionStatus.classList.toggle("failure", ollamaUnavailable);
+  elements.ollamaGuideConnectionStatus.textContent = ollamaUnavailable
+    ? "BrowserChat still can’t reach Ollama. Make sure the server command above is running, then try again."
+    : "Connected successfully. Your Ollama models are ready in BrowserChat.";
+});
+for (const button of document.querySelectorAll("[data-copy-command]")) {
+  button.addEventListener("click", () => {
+    void copyCommand(button, button.dataset.copyCommand);
+  });
+}
 
 elements.automaticFileChunks.addEventListener("change", updateFileChunkSelectionSummary);
 elements.allFileChunks.addEventListener("change", updateFileChunkSelectionSummary);
