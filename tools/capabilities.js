@@ -13,6 +13,12 @@
       inputs: ["Active browser tab"]
     },
     {
+      name: "Add webpage",
+      description: "Fetch a user-provided HTTP or HTTPS URL, extract readable text, and attach it to the active chat.",
+      availability: "User initiated",
+      inputs: ["Complete webpage URL"]
+    },
+    {
       name: "DOM context",
       description: "Include rendered content from the active page, either in full or from a selected element, with a configurable text limit.",
       availability: "User initiated",

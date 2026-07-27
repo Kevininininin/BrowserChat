@@ -56,10 +56,12 @@
   function buildSystemPrompt({
     corePrompt,
     page = null,
+    hasRetrievedContext = false,
     site = null,
     settings
   } = {}) {
     const prompts = normalizePromptSettings(settings);
+    const hasContext = Boolean(page || hasRetrievedContext);
     const websiteContext =
       typeof site?.url === "string" && site.url
         ? [
@@ -74,7 +76,11 @@
     return [
       normalizeSystemPrompt(corePrompt),
       websiteContext,
-      page ? prompts.pageContextInstruction : prompts.noPageContextInstruction,
+      page
+        ? prompts.pageContextInstruction
+        : hasContext
+        ? ""
+        : prompts.noPageContextInstruction,
       page && page.capture?.mode === "selectedElement"
         ? prompts.selectedElementInstruction
         : "",

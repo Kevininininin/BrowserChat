@@ -2636,6 +2636,11 @@ select {
   background: #edf4fd;
 }
 
+.tool-menu-icon-webpage {
+  color: #36708a;
+  background: #edf7f8;
+}
+
 .tool-menu-icon-screenshot {
   color: #8a55b5;
   background: #f5effa;

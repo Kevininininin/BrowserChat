@@ -243,6 +243,40 @@
     });
   }
 
+  async function indexWebpage({
+    chatId,
+    html,
+    extracted: providedExtraction = null,
+    url,
+    finalUrl = url,
+    contentType = "text/html",
+    attachmentId = crypto.randomUUID(),
+    signal,
+    onProgress
+  }) {
+    if (!settings.enabled) throw new Error("RAG indexing is disabled in Settings.");
+    onProgress?.({ stage: "extracting", completed: 0, total: 0 });
+    const extracted =
+      providedExtraction || BrowserChatRagExtractors.extractHtml(html);
+    const hostname = new URL(finalUrl || url).hostname;
+    const title = extracted.metadata?.title || hostname || "Webpage";
+    return indexExtracted({
+      chatId,
+      attachmentId,
+      name: title,
+      mimeType: contentType || "text/html",
+      kind: "webpage",
+      extracted,
+      sourceMetadata: {
+        url: finalUrl || url,
+        requestedUrl: url,
+        fetchedAt: new Date().toISOString()
+      },
+      signal,
+      onProgress
+    });
+  }
+
   function similarity(a, b) {
     if (!a || !b || a.length !== b.length) return Number.NEGATIVE_INFINITY;
     let score = 0;
@@ -375,7 +409,7 @@
 
     const context = finalChunks.map((chunk, index) => [
       `[Retrieved source ${index + 1}]`,
-      `File: ${chunk.attachmentName}`,
+      `Source: ${chunk.attachmentName}`,
       `Chunk: ${chunk.chunkIndex + 1}`,
       chunk.manuallySelected ? "Selection: chosen for this message" : `Similarity: ${chunk.score.toFixed(4)}`,
       chunk.sourceMetadata?.url ? `URL: ${chunk.sourceMetadata.url}` : "",
@@ -407,6 +441,7 @@
     chunkText,
     indexFile,
     indexDom,
+    indexWebpage,
     retrieve,
     getAttachment: BrowserChatRagDatabase.getAttachment,
     getAttachmentsByChat: BrowserChatRagDatabase.getAttachmentsByChat,

@@ -289,6 +289,7 @@
 
   globalThis.BrowserChatRagExtractors = Object.freeze({
     extractFile,
+    extractHtml,
     extractDom,
     normalizeText
   });

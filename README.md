@@ -143,6 +143,12 @@ generates embeddings through Ollama's `nomic-embed-text` model. Indexed content
 is stored in IndexedDB under the current chat and remains available to later
 questions in that chat.
 
+Use **Add webpage** from the composer’s plus menu to paste a complete `http://`
+or `https://` URL. After approving access to that site, BrowserChat fetches the
+page, removes HTML markup and non-content elements, and uses the same
+chat-scoped retrieval pipeline. When RAG is disabled, the cleaned readable text
+is attached directly instead.
+
 Install the default embedding model before indexing files:
 
 ```sh
