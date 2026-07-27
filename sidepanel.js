@@ -2394,11 +2394,51 @@ function downloadCursorTrace(trace) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function createResponseDownloadControl(initialTrace = null, initialCursorTrace = null) {
+function createMessageCopyButton(getText) {
+  const button = document.createElement("button");
+  button.className = "response-download-button copy-message-button";
+  button.type = "button";
+  button.title = "Copy message";
+  button.setAttribute("aria-label", "Copy message to clipboard");
+  const copyIcon = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="8" y="8" width="11" height="11" rx="2"/>
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+    </svg>`;
+  button.innerHTML = copyIcon;
+  button.addEventListener("click", async () => {
+    const text = String(getText?.() || "");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m5 12.5 4 4L19 6.5"/>
+        </svg>`;
+      button.title = "Copied";
+      button.setAttribute("aria-label", "Message copied");
+      window.setTimeout(() => {
+        button.innerHTML = copyIcon;
+        button.title = "Copy message";
+        button.setAttribute("aria-label", "Copy message to clipboard");
+      }, 1600);
+    } catch {
+      button.title = "Could not copy message";
+    }
+  });
+  return button;
+}
+
+function createResponseDownloadControl(
+  initialTrace = null,
+  initialCursorTrace = null,
+  getMessageText = () => ""
+) {
   let trace = initialTrace;
   let cursorTrace = initialCursorTrace;
   const wrap = document.createElement("div");
   wrap.className = "response-actions";
+  const copyButton = createMessageCopyButton(getMessageText);
   const createButton = (label, title) => {
     const button = document.createElement("button");
     button.className = "response-download-button";
@@ -2418,6 +2458,7 @@ function createResponseDownloadControl(initialTrace = null, initialCursorTrace =
     "Cursor log",
     "Download the on-page cursor display log as JSON"
   );
+  copyButton.hidden = !trace;
   responseButton.hidden = !trace;
   cursorButton.hidden = !cursorTrace;
   responseButton.addEventListener("click", () => {
@@ -2426,11 +2467,12 @@ function createResponseDownloadControl(initialTrace = null, initialCursorTrace =
   cursorButton.addEventListener("click", () => {
     if (cursorTrace) downloadCursorTrace(cursorTrace);
   });
-  wrap.append(responseButton, cursorButton);
+  wrap.append(copyButton, responseButton, cursorButton);
   return {
     wrap,
     setTrace(nextTrace) {
       trace = nextTrace;
+      copyButton.hidden = !trace;
       responseButton.hidden = !trace;
     },
     setCursorTrace(nextTrace) {
@@ -2522,9 +2564,15 @@ function appendMessage(role, content = "", options = {}) {
   if (role === "assistant") {
     const download = createResponseDownloadControl(
       buildResponseTrace(content, options),
-      options.cursorDisplayLog || null
+      options.cursorDisplayLog || null,
+      () => message.innerText.trim()
     );
     contentWrap.append(download.wrap);
+  } else {
+    const actions = document.createElement("div");
+    actions.className = "response-actions user-message-actions";
+    actions.append(createMessageCopyButton(() => content));
+    contentWrap.append(actions);
   }
   row.append(contentWrap);
   elements.conversation.append(row);
@@ -2822,7 +2870,11 @@ function appendAssistantMessage({
   message.className = "message pending";
   message.textContent = "";
   contentWrap.append(message);
-  const download = createResponseDownloadControl();
+  const download = createResponseDownloadControl(
+    null,
+    null,
+    () => message.innerText.trim()
+  );
   contentWrap.append(download.wrap);
 
   row.append(contentWrap);
