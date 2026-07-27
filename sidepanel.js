@@ -6767,7 +6767,7 @@ async function submitPrompt(prompt) {
     }
     assistantUI.addAttachments({
       order: composerAttachmentOrder,
-      contextAttachment,
+      contextAttachment: ragEnabled ? null : contextAttachment,
       skills: selectedSkills,
       requestedSkillIds,
       sourceReferences: retrieval.sources
