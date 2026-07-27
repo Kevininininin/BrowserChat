@@ -3822,10 +3822,6 @@ select {
   opacity: 1;
 }
 
-.assistant-activity-header.chevron-just-toggled .activity-disclosure-chevron {
-  opacity: 0;
-}
-
 .assistant-activity-header[aria-expanded="true"] .activity-disclosure-chevron {
   transform: rotate(90deg);
 }
@@ -3893,12 +3889,7 @@ select {
 }
 
 .assistant-activity-stack .tool-activity-panel[open]:not(.single-tool) > summary::after {
-  opacity: 1;
   transform: rotate(45deg) translateY(-2px);
-}
-
-.assistant-activity-stack details.chevron-just-toggled > summary::after {
-  opacity: 0;
 }
 
 .assistant-activity-stack .tool-activity-panel.single-tool > summary {
@@ -3935,7 +3926,6 @@ select {
 }
 
 .assistant-activity-stack .skill-usage-panel[open]:not(.single-skill) > summary::after {
-  opacity: 1;
   transform: rotate(45deg) translateY(-2px);
 }
 
@@ -3958,8 +3948,7 @@ select {
   display: none;
 }
 
-.assistant-activity-stack .tool-activity-panel:not([open]) > .tool-activity-list,
-.assistant-activity-stack .tool-activity-panel:not([open]) > .tool-activity-actions {
+.assistant-activity-stack .tool-activity-panel:not([open]) > .tool-activity-list {
   display: none;
 }
 
@@ -4212,10 +4201,6 @@ select {
   transform: rotate(45deg) translateY(-2px);
 }
 
-.activity-dialog-timeline details.chevron-just-toggled > summary::after {
-  opacity: 0;
-}
-
 .activity-dialog-timeline .tool-objective-group {
   margin-left: 0;
   padding-left: 0;
@@ -4318,4 +4303,32 @@ select {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+.activity-dialog-timeline > .tool-activity-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding: 3px 4px 10px;
+}
+
+.activity-final-stage {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 4px;
+  gap: 7px;
+  color: #777773;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.activity-final-stage[hidden] {
+  display: none;
+}
+
+.activity-final-stage.streaming > span:last-child {
+  background: linear-gradient(90deg, #8a8a85 20%, #3e3e3b 45%, #8a8a85 70%);
+  background-size: 220% 100%;
+  color: transparent;
+  background-clip: text;
+  animation: activityShimmer 1.8s linear infinite;
 }

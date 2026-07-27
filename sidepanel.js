@@ -2049,6 +2049,22 @@ function setActivitySummary(summary, text, iconKind) {
   summary.append(icon, label);
 }
 
+function createActivityFinalStage({ streaming = false } = {}) {
+  const stage = document.createElement("div");
+  stage.className = "activity-final-stage";
+  stage.classList.toggle("streaming", streaming);
+  stage.hidden = streaming;
+  stage.setAttribute("role", "status");
+  stage.setAttribute("aria-live", "polite");
+  const icon = document.createElement("span");
+  icon.className = "activity-icon";
+  icon.innerHTML = getActivityIconSvg("edit");
+  const label = document.createElement("span");
+  label.textContent = streaming ? "Writing final result…" : "Final result written";
+  stage.append(icon, label);
+  return { stage, label };
+}
+
 function createActivityStack({ startedAt = Date.now() } = {}) {
   const stack = document.createElement("section");
   stack.className = "assistant-activity-stack streaming";
@@ -2086,10 +2102,6 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
   };
   header.addEventListener("click", () => {
     setExpanded(header.getAttribute("aria-expanded") !== "true");
-    header.classList.add("chevron-just-toggled");
-  });
-  header.addEventListener("pointerleave", () => {
-    header.classList.remove("chevron-just-toggled");
   });
   body.addEventListener("click", (event) => {
     const leaf = event.target.closest("[data-activity-key]");
@@ -2107,16 +2119,6 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
     event.preventDefault();
     openActivityDialog(stack, leaf.dataset.activityKey);
   });
-  body.addEventListener("toggle", (event) => {
-    if (event.target.matches?.("details")) {
-      event.target.classList.add("chevron-just-toggled");
-    }
-  }, true);
-  body.addEventListener("pointerleave", (event) => {
-    if (event.target.matches?.("details")) {
-      event.target.classList.remove("chevron-just-toggled");
-    }
-  }, true);
   return { stack, header, body, startedAt, setExpanded, duration, durationTimer };
 }
 
@@ -2173,7 +2175,9 @@ function annotateActivityDisclosures(root) {
 
 function getActivityDisclosureState() {
   return new Map(
-    [...elements.activityDialogContent.querySelectorAll("details[data-disclosure-key]")]
+    [...elements.activityDialogContent.querySelectorAll(
+      "details[data-disclosure-key]:not([hidden])"
+    )]
       .map((details) => [
         details.dataset.disclosureKey,
         {
@@ -2232,6 +2236,8 @@ function renderActivityDialog() {
       clone.append(evaluation);
     }
   );
+  const finalStage = clone.querySelector(".activity-final-stage:not([hidden])");
+  if (finalStage) clone.append(finalStage);
   annotateActivityDisclosures(clone);
   clone.querySelectorAll("details:not([hidden])").forEach((details) => {
     const previous = disclosureState.get(details.dataset.disclosureKey);
@@ -2405,10 +2411,11 @@ function createToolActivityPanel() {
   const answerNowButton = document.createElement("button");
   answerNowButton.className = "tool-answer-now-button";
   answerNowButton.type = "button";
+  answerNowButton.dataset.activityAction = "answer-now";
   answerNowButton.textContent = "Answer now";
   actions.append(answerNowButton);
 
-  panel.append(summary, list, actions);
+  panel.append(summary, list);
 
   return {
     panel,
@@ -2619,7 +2626,9 @@ function renderToolActivity(toolUI, activity) {
   }
   if (activity.thinkingAfter) {
     activityUI.thinking.hidden = false;
-    activityUI.thinking.open = Boolean(activity.thinkingStreaming);
+    // Keep post-tool reasoning expanded when it first appears. The activity
+    // dialog preserves any explicit user choice on subsequent renders.
+    activityUI.thinking.open = true;
     activityUI.thinking.classList.toggle(
       "streaming",
       Boolean(activity.thinkingStreaming)
@@ -3030,6 +3039,9 @@ function appendMessage(role, content = "", options = {}) {
       options.toolActivities,
       options.stepEvaluations
     );
+    if (activityStack && String(content || "").trim()) {
+      activityStack.body.append(createActivityFinalStage().stage);
+    }
   }
 
   const message = document.createElement("div");
@@ -3378,7 +3390,10 @@ function appendAssistantMessage({
   activityStack.body.append(thinkingPanel);
 
   const toolUI = createToolActivityPanel();
-  activityStack.body.append(toolUI.panel);
+  activityStack.body.append(toolUI.panel, toolUI.actions);
+
+  const finalStageUI = createActivityFinalStage({ streaming: true });
+  activityStack.body.append(finalStageUI.stage);
 
   const message = document.createElement("div");
   message.className = "message pending";
@@ -3403,6 +3418,8 @@ function appendAssistantMessage({
     thinkingSummary,
     thinkingContent,
     toolUI,
+    finalStage: finalStageUI.stage,
+    finalStageLabel: finalStageUI.label,
     activityStack,
     setDownloadTrace: download.setTrace,
     setCursorTrace: download.setCursorTrace,
@@ -7399,6 +7416,7 @@ async function submitPrompt(prompt) {
         partialResponse.content = text;
         assistantUI.processingStatus.hidden = true;
         assistantUI.toolUI.panel.open = false;
+        assistantUI.finalStage.hidden = false;
         if (!assistantUI.answerStarted) {
           assistantUI.answerStarted = true;
           assistantUI.thinkingPanel.classList.remove("streaming");
@@ -7492,6 +7510,10 @@ async function submitPrompt(prompt) {
     }
     assistantUI.processingStatus.hidden = true;
     assistantUI.thinkingPanel.classList.remove("streaming");
+    if (!assistantUI.finalStage.hidden) {
+      assistantUI.finalStage.classList.remove("streaming");
+      assistantUI.finalStageLabel.textContent = "Final result written";
+    }
     finishActivityStack(assistantUI.activityStack);
     if (answer.thinking && !assistantUI.toolUI.activities.size) {
       setActivitySummary(assistantUI.thinkingSummary, "Thought process", "thinking");
@@ -8236,19 +8258,16 @@ elements.activityDialogContent.addEventListener("scroll", (event) => {
   );
 }, { capture: true, passive: true });
 
-elements.activityDialogContent.addEventListener("toggle", (event) => {
-  const details = event.target.closest?.("details");
-  if (!details) return;
-  details.classList.add("chevron-just-toggled");
-}, true);
-
-elements.activityDialogContent.addEventListener("pointerleave", (event) => {
-  if (event.target.matches?.("details")) {
-    event.target.classList.remove("chevron-just-toggled");
-  }
-}, true);
-
 elements.activityDialogContent.addEventListener("click", (event) => {
+  const activityAction = event.target.closest("[data-activity-action]");
+  if (activityAction?.dataset.activityAction === "answer-now") {
+    activeActivityStack
+      ?.querySelector('[data-activity-action="answer-now"]')
+      ?.click();
+    activityAction.disabled = true;
+    activityAction.textContent = "Answering…";
+    return;
+  }
   const image = event.target.closest("[data-preview-image]");
   if (image) openImagePreview(image);
 });
