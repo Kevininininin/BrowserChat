@@ -2011,6 +2011,50 @@ function formatToolActivityValue(value) {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function getActivityIconSvg(kind = "thinking") {
+  const icons = {
+    thinking: '<path d="M9.5 18h5M10 21h4M8.2 14.5A6 6 0 1 1 15.8 14.5c-.9.7-1.3 1.4-1.3 2.5h-5c0-1.1-.4-1.8-1.3-2.5Z"/>',
+    skill: '<path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v17H7.5A2.5 2.5 0 0 0 5 21.5v-17Z"/><path d="M5 4.5v17M9 6h6M9 10h6"/>',
+    tools: '<path d="m14.7 6.3 3-3a4 4 0 0 1-5 5l-6.9 6.9a2 2 0 1 0 3 3l6.9-6.9a4 4 0 0 1 5-5l-3 3-3-3Z"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    eye: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/>',
+    search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/>',
+    cursor: '<path d="m5 3 13 9-6 1.5L9 20 5 3Z"/>',
+    edit: '<path d="m4 20 4.2-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.7 2.8 2.8"/>',
+    keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 14h10"/>',
+    scroll: '<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 18 5-5 3 3 2-2 4 4"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    calculator: '<rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8 6h8v3H8zM8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01"/>'
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[kind] || icons.tools}</svg>`;
+}
+
+function getToolActivityIcon(toolName = "") {
+  if (toolName === "calculate") return "calculator";
+  if (toolName === "get_current_website") return "globe";
+  if (["observe_page"].includes(toolName)) return "eye";
+  if (toolName.includes("search") || toolName.includes("find_interactive")) return "search";
+  if (toolName.includes("click")) return "cursor";
+  if (toolName === "fill_field" || toolName === "select_option") return "edit";
+  if (toolName === "press_key") return "keyboard";
+  if (toolName === "scroll_page") return "scroll";
+  if (toolName === "take_screenshot") return "image";
+  if (toolName === "wait_for_page") return "clock";
+  return "tools";
+}
+
+function setActivitySummary(summary, text, iconKind) {
+  summary.replaceChildren();
+  const icon = document.createElement("span");
+  icon.className = "activity-icon";
+  icon.innerHTML = getActivityIconSvg(iconKind);
+  const label = document.createElement("span");
+  label.className = "activity-summary-label";
+  label.textContent = text;
+  summary.append(icon, label);
+}
+
 function createActivityStack({ startedAt = Date.now() } = {}) {
   const stack = document.createElement("section");
   stack.className = "assistant-activity-stack streaming";
@@ -2024,21 +2068,41 @@ function createActivityStack({ startedAt = Date.now() } = {}) {
   const header = document.createElement("button");
   header.className = "assistant-activity-header";
   header.type = "button";
-  header.setAttribute("aria-label", "Open detailed activity");
+  header.setAttribute("aria-label", "Hide activity");
+  header.setAttribute("aria-expanded", "true");
   header.innerHTML = `
     <span class="assistant-activity-status">Working</span>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+    <svg class="activity-disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
   `;
 
   const body = document.createElement("div");
   body.className = "assistant-activity-body";
   stack.append(header, body);
-  header.addEventListener("click", () => openActivityDialog(stack));
-  body.addEventListener("click", (event) => {
-    if (event.target.closest("button, a")) return;
-    openActivityDialog(stack);
+  const setExpanded = (expanded) => {
+    header.setAttribute("aria-expanded", String(expanded));
+    header.setAttribute("aria-label", expanded ? "Hide activity" : "Show activity");
+    body.hidden = !expanded;
+  };
+  header.addEventListener("click", () => {
+    setExpanded(header.getAttribute("aria-expanded") !== "true");
   });
-  return { stack, header, body, startedAt };
+  body.addEventListener("click", (event) => {
+    const leaf = event.target.closest("[data-activity-key]");
+    if (!leaf || event.target.closest(".tool-activity-panel > summary")) return;
+    if (leaf.matches("details") && event.target.closest("summary") !== leaf.querySelector(":scope > summary")) {
+      return;
+    }
+    event.preventDefault();
+    openActivityDialog(stack, leaf.dataset.activityKey);
+  });
+  body.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    const leaf = event.target.closest("[data-activity-key]");
+    if (!leaf) return;
+    event.preventDefault();
+    openActivityDialog(stack, leaf.dataset.activityKey);
+  });
+  return { stack, header, body, startedAt, setExpanded };
 }
 
 function finishActivityStack(activityStack) {
@@ -2047,6 +2111,10 @@ function finishActivityStack(activityStack) {
   activityStack.stack.dataset.finishedAt = String(Date.now());
   const label = activityStack.header.querySelector(".assistant-activity-status");
   if (label) label.textContent = "Worked";
+  for (const toolPanel of activityStack.body.querySelectorAll(".tool-activity-panel")) {
+    if (!toolPanel.classList.contains("single-tool")) toolPanel.open = false;
+  }
+  activityStack.setExpanded(false);
 }
 
 function formatActivityDuration(stack) {
@@ -2059,15 +2127,13 @@ function formatActivityDuration(stack) {
   return `${minutes}m ${seconds % 60}s`;
 }
 
-function openActivityDialog(stack) {
+function openActivityDialog(stack, activityKey = null) {
   if (!stack || !elements.activityDialog) return;
   const clone = stack.querySelector(".assistant-activity-body")?.cloneNode(true);
   if (!clone) return;
+  clone.hidden = false;
   clone.classList.add("activity-dialog-timeline");
-  clone.querySelectorAll("[hidden]").forEach((node) => {
-    node.hidden = false;
-  });
-  clone.querySelectorAll("details").forEach((details) => {
+  clone.querySelectorAll("details:not([hidden])").forEach((details) => {
     details.open = true;
   });
   clone.querySelectorAll("summary").forEach((summary) => {
@@ -2079,18 +2145,38 @@ function openActivityDialog(stack) {
   elements.activityDialogDuration.textContent = formatActivityDuration(stack);
   elements.activityDialogContent.replaceChildren(clone);
   if (!elements.activityDialog.open) elements.activityDialog.showModal();
+  if (activityKey) {
+    requestAnimationFrame(() => {
+      const target = [...clone.querySelectorAll("[data-activity-key]")].find(
+        (node) => node.dataset.activityKey === activityKey
+      );
+      if (!target) return;
+      target.classList.add("activity-dialog-focus");
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
 }
 
 function createSkillUsagePanel(skills = []) {
   const panel = document.createElement("details");
   panel.className = "skill-usage-panel";
   panel.hidden = !skills.length;
+  panel.classList.toggle("single-skill", skills.length === 1);
+  const skillKeys = new Map(
+    skills.map((skill, index) => [
+      skill,
+      `skill-${skill.id || `selected-${index}`}`
+    ])
+  );
+  if (skills.length === 1) {
+    panel.dataset.activityKey = skillKeys.get(skills[0]);
+  }
 
   const summary = document.createElement("summary");
   const skillNames = skills.map((skill) => skill.name || "Untitled skill").join(", ");
-  summary.textContent = skills.length === 1
+  setActivitySummary(summary, skills.length === 1
     ? `Skill used: ${skillNames}`
-    : `Skills used: ${skillNames}`;
+    : `Skills used: ${skillNames}`, "skill");
 
   const list = document.createElement("div");
   list.className = "skill-usage-list";
@@ -2098,7 +2184,11 @@ function createSkillUsagePanel(skills = []) {
   for (const skill of skills) {
     const row = document.createElement("details");
     row.className = "skill-usage-row";
+    row.dataset.activityKey = skillKeys.get(skill);
     const rowSummary = document.createElement("summary");
+    const icon = document.createElement("span");
+    icon.className = "activity-icon";
+    icon.innerHTML = getActivityIconSvg("skill");
     const name = document.createElement("strong");
     name.textContent = skill.name || "Untitled skill";
     const source = document.createElement("span");
@@ -2106,7 +2196,7 @@ function createSkillUsagePanel(skills = []) {
     source.textContent = skill.selectionSource === "explicit"
       ? "Selected explicitly"
       : "Selected automatically";
-    rowSummary.append(name, source);
+    rowSummary.append(icon, name, source);
 
     const body = document.createElement("div");
     body.className = "skill-usage-body";
@@ -2132,7 +2222,7 @@ function createToolActivityPanel() {
   panel.setAttribute("aria-live", "polite");
 
   const summary = document.createElement("summary");
-  summary.textContent = "Using tools…";
+  setActivitySummary(summary, "Using tools…", "tools");
 
   const list = document.createElement("div");
   list.className = "tool-activity-list";
@@ -2232,21 +2322,25 @@ function updateToolActivitySummary(toolUI) {
   const activities = [...toolUI.activities.values()];
   const running = activities.filter((activity) => activity.status === "running");
   if (running.length) {
-    toolUI.summary.textContent = running.length === 1
+    setActivitySummary(toolUI.summary, running.length === 1
       ? getToolActivityCopy(running[0].name, "running")
-      : `Using ${running.length} tools…`;
+      : `Using ${running.length} tools…`, "tools");
     toolUI.panel.classList.add("streaming");
+    toolUI.panel.open = true;
     return;
   }
 
   toolUI.panel.classList.remove("streaming");
   const unsupported = activities.filter((activity) => activity.unsupported).length;
   const failed = activities.filter((activity) => activity.status === "failed").length;
-  toolUI.summary.textContent = unsupported
+  const summaryText = unsupported
     ? `${unsupported} unsupported tool ${unsupported === 1 ? "request" : "requests"}`
     : failed
     ? `${failed} tool ${failed === 1 ? "call" : "calls"} failed`
     : `Used ${activities.length} ${activities.length === 1 ? "tool" : "tools"}`;
+  setActivitySummary(toolUI.summary, summaryText, "tools");
+  toolUI.panel.classList.toggle("single-tool", activities.length === 1);
+  if (activities.length === 1) toolUI.panel.open = true;
 }
 
 function renderToolActivity(toolUI, activity) {
@@ -2254,6 +2348,9 @@ function renderToolActivity(toolUI, activity) {
   if (!activityUI) {
     const row = document.createElement("div");
     row.className = "tool-activity-row";
+    row.dataset.activityKey = `tool-${activity.id}`;
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
 
     const header = document.createElement("div");
     header.className = "tool-activity-header";
@@ -2261,6 +2358,7 @@ function renderToolActivity(toolUI, activity) {
     const indicator = document.createElement("span");
     indicator.className = "tool-activity-indicator";
     indicator.setAttribute("aria-hidden", "true");
+    indicator.innerHTML = getActivityIconSvg(getToolActivityIcon(activity.name));
 
     const label = document.createElement("span");
     label.className = "tool-activity-label";
@@ -2297,7 +2395,7 @@ function renderToolActivity(toolUI, activity) {
     thinking.className = "tool-step-thinking";
     thinking.hidden = true;
     const thinkingSummary = document.createElement("summary");
-    thinkingSummary.textContent = "Thinking after this tool…";
+    setActivitySummary(thinkingSummary, "Thinking after this tool…", "thinking");
     const thinkingContent = document.createElement("div");
     thinkingContent.className = "tool-step-thinking-content";
     thinking.append(thinkingSummary, thinkingContent);
@@ -2321,6 +2419,13 @@ function renderToolActivity(toolUI, activity) {
   }
 
   Object.assign(activityUI, activity);
+  activityUI.row.dataset.activityKey = `tool-${activity.id}`;
+  activityUI.row.setAttribute(
+    "aria-label",
+    `${getToolActivityCopy(activity.name, activity.status)}. Open activity details.`
+  );
+  activityUI.row.querySelector(".tool-activity-indicator").innerHTML =
+    getActivityIconSvg(getToolActivityIcon(activity.name));
   activityUI.row.dataset.status = activity.status;
   activityUI.row.dataset.unsupported = String(Boolean(activity.unsupported));
   activityUI.label.textContent = activity.unsupported
@@ -2348,9 +2453,9 @@ function renderToolActivity(toolUI, activity) {
       "streaming",
       Boolean(activity.thinkingStreaming)
     );
-    activityUI.thinkingSummary.textContent = activity.thinkingStreaming
+    setActivitySummary(activityUI.thinkingSummary, activity.thinkingStreaming
       ? "Thinking after this tool…"
-      : "Thought process after this tool";
+      : "Thought process after this tool", "thinking");
     activityUI.thinkingContent.textContent = activity.thinkingAfter;
     activityUI.thinkingContent.scrollTop =
       activityUI.thinkingContent.scrollHeight;
@@ -2388,16 +2493,18 @@ function appendStoredToolActivities(contentWrap, activities = [], evaluations = 
       streaming: false
     });
   }
+  if (activities.length > 1) toolUI.panel.open = false;
 }
 
 function appendStoredThinking(contentWrap, thinking, hasTools = false) {
   if (!thinking) return;
   const panel = document.createElement("details");
   panel.className = "thinking-panel";
+  panel.dataset.activityKey = "thinking-initial";
   const summary = document.createElement("summary");
-  summary.textContent = hasTools
+  setActivitySummary(summary, hasTools
     ? "Thought process before first tool"
-    : "Thought process";
+    : "Thought process", "thinking");
   const content = document.createElement("div");
   content.className = "thinking-content";
   content.textContent = thinking;
@@ -2726,6 +2833,7 @@ function appendMessage(role, content = "", options = {}) {
         options.stoppedAt ? new Date(options.stoppedAt).getTime() : Date.now()
       );
       activityStack.header.querySelector(".assistant-activity-status").textContent = "Worked";
+      activityStack.setExpanded(false);
       contentWrap.append(activityStack.stack);
     }
     if (options.sourceReferences?.length) {
@@ -3082,11 +3190,12 @@ function appendAssistantMessage({
 
   const thinkingPanel = document.createElement("details");
   thinkingPanel.className = "thinking-panel streaming";
+  thinkingPanel.dataset.activityKey = "thinking-initial";
   thinkingPanel.open = thinkingEnabled;
   thinkingPanel.hidden = true;
 
   const thinkingSummary = document.createElement("summary");
-  thinkingSummary.textContent = "Thinking…";
+  setActivitySummary(thinkingSummary, "Thinking…", "thinking");
 
   const thinkingContent = document.createElement("div");
   thinkingContent.className = "thinking-content";
@@ -6918,7 +7027,7 @@ async function submitPrompt(prompt) {
     answerNowController.abort();
     assistantUI.toolUI.answerNowButton.disabled = true;
     assistantUI.toolUI.answerNowButton.textContent = "Answering…";
-    assistantUI.toolUI.summary.textContent = "Preparing answer…";
+    setActivitySummary(assistantUI.toolUI.summary, "Preparing answer…", "tools");
     assistantUI.toolUI.panel.classList.add("streaming");
   });
   activeRequest = controller;
@@ -7091,10 +7200,10 @@ async function submitPrompt(prompt) {
         if (!assistantUI.answerStarted) {
           assistantUI.thinkingPanel.open = true;
           assistantUI.thinkingPanel.classList.add("streaming");
-          assistantUI.thinkingSummary.textContent = "Thinking…";
+          setActivitySummary(assistantUI.thinkingSummary, "Thinking…", "thinking");
         } else {
           assistantUI.thinkingPanel.classList.remove("streaming");
-          assistantUI.thinkingSummary.textContent = "Thought process";
+          setActivitySummary(assistantUI.thinkingSummary, "Thought process", "thinking");
         }
         assistantUI.thinkingContent.textContent = roundThinking;
         assistantUI.thinkingContent.scrollTop =
@@ -7110,7 +7219,7 @@ async function submitPrompt(prompt) {
           assistantUI.thinkingPanel.classList.remove("streaming");
           if (assistantUI.hasThinking) {
             if (!assistantUI.toolUI.activities.size) {
-              assistantUI.thinkingSummary.textContent = "Thought process";
+              setActivitySummary(assistantUI.thinkingSummary, "Thought process", "thinking");
             }
             assistantUI.thinkingPanel.open = false;
           } else {
@@ -7148,8 +7257,11 @@ async function submitPrompt(prompt) {
         if (assistantUI.hasThinking && !assistantUI.toolUI.activities.size) {
           assistantUI.thinkingPanel.classList.remove("streaming");
           assistantUI.thinkingPanel.open = false;
-          assistantUI.thinkingSummary.textContent =
-            "Thought process before first tool";
+          setActivitySummary(
+            assistantUI.thinkingSummary,
+            "Thought process before first tool",
+            "thinking"
+          );
         }
         assistantUI.toolUI.actions.hidden = false;
         assistantUI.toolUI.panel.open = true;
@@ -7199,7 +7311,7 @@ async function submitPrompt(prompt) {
     assistantUI.thinkingPanel.classList.remove("streaming");
     finishActivityStack(assistantUI.activityStack);
     if (answer.thinking && !assistantUI.toolUI.activities.size) {
-      assistantUI.thinkingSummary.textContent = "Thought process";
+      setActivitySummary(assistantUI.thinkingSummary, "Thought process", "thinking");
     } else if (!answer.thinking) {
       assistantUI.thinkingPanel.hidden = true;
     }
@@ -7294,7 +7406,7 @@ async function submitPrompt(prompt) {
     assistantUI.message.classList.remove("pending");
     assistantUI.thinkingPanel.classList.remove("streaming");
     if (error.name === "AbortError") {
-      assistantUI.thinkingSummary.textContent = "Thinking stopped";
+      setActivitySummary(assistantUI.thinkingSummary, "Thinking stopped", "thinking");
       assistantUI.thinkingPanel.open = false;
       const stoppedAt = Date.now();
       const partialContent =

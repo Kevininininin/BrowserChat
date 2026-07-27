@@ -3756,6 +3756,253 @@ select {
   background: #f6f6f4;
 }
 
+/* Activity hierarchy and disclosure refinements */
+.assistant-activity-header .activity-disclosure-chevron {
+  transition: transform 140ms ease;
+}
+
+.assistant-activity-header[aria-expanded="true"] .activity-disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+.assistant-activity-body[hidden] {
+  display: none;
+}
+
+.assistant-activity-stack .thinking-panel > summary,
+.assistant-activity-stack .skill-usage-panel > summary,
+.assistant-activity-stack .tool-activity-panel > summary {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.assistant-activity-stack .thinking-panel > summary::before,
+.assistant-activity-stack .skill-usage-panel > summary::before,
+.assistant-activity-stack .tool-activity-panel > summary::before {
+  display: none;
+}
+
+.activity-icon,
+.assistant-activity-stack .tool-activity-indicator {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: #8c8c87;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  place-items: center;
+}
+
+.activity-icon svg,
+.assistant-activity-stack .tool-activity-indicator svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.65;
+}
+
+.assistant-activity-stack .tool-activity-panel:not(.single-tool) > summary::after {
+  display: block;
+  flex: 0 0 auto;
+  order: 3;
+  width: 6px;
+  height: 6px;
+  margin: 0 0 0 2px;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0;
+  transform: rotate(-45deg);
+  transition: opacity 120ms ease, transform 140ms ease;
+}
+
+.assistant-activity-stack .tool-activity-panel:not(.single-tool) > summary:hover::after,
+.assistant-activity-stack .tool-activity-panel:not(.single-tool) > summary:focus-visible::after {
+  opacity: 1;
+}
+
+.assistant-activity-stack .tool-activity-panel[open]:not(.single-tool) > summary::after {
+  opacity: 1;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.assistant-activity-stack .tool-activity-panel.single-tool > summary {
+  display: none;
+}
+
+.assistant-activity-stack .skill-usage-panel.single-skill .skill-usage-list {
+  display: none;
+}
+
+.assistant-activity-stack .skill-usage-panel:not(.single-skill)[open] .skill-usage-list {
+  display: grid;
+  padding: 0;
+  gap: 0;
+}
+
+.assistant-activity-stack .skill-usage-panel:not(.single-skill) > summary::after {
+  display: block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0;
+  transform: rotate(-45deg);
+  transition: opacity 120ms ease, transform 140ms ease;
+}
+
+.assistant-activity-stack .skill-usage-panel:not(.single-skill) > summary:hover::after,
+.assistant-activity-stack .skill-usage-panel:not(.single-skill) > summary:focus-visible::after {
+  opacity: 1;
+}
+
+.assistant-activity-stack .skill-usage-panel[open]:not(.single-skill) > summary::after {
+  opacity: 1;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.assistant-activity-stack .skill-usage-row {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.assistant-activity-stack .skill-usage-row > summary {
+  min-height: 26px;
+  padding: 3px 4px;
+  color: #777773;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.assistant-activity-stack .skill-usage-row > summary::after,
+.assistant-activity-stack .skill-usage-body {
+  display: none;
+}
+
+.assistant-activity-stack .tool-activity-panel:not([open]) > .tool-activity-list,
+.assistant-activity-stack .tool-activity-panel:not([open]) > .tool-activity-actions {
+  display: none;
+}
+
+.activity-dialog-timeline .tool-activity-indicator {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: #777773;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  place-items: center;
+}
+
+.activity-dialog-timeline .tool-activity-indicator svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.65;
+}
+
+.activity-dialog-timeline .thinking-panel > summary::before,
+.activity-dialog-timeline .skill-usage-panel > summary::before,
+.activity-dialog-timeline .tool-activity-panel > summary::before {
+  display: none;
+}
+
+.activity-dialog-timeline .skill-usage-row,
+.activity-dialog-timeline .tool-objective-group {
+  position: relative;
+  margin-left: 3px;
+  padding-left: 17px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #deded9;
+  border-radius: 0;
+}
+
+.activity-dialog-timeline .tool-objective-heading {
+  padding: 2px 0 10px;
+  background: transparent;
+  border: 0;
+}
+
+.activity-dialog-timeline .tool-objective-activities {
+  padding: 0;
+  gap: 0;
+}
+
+.activity-dialog-timeline .tool-activity-row {
+  position: relative;
+  padding: 7px 0 12px 17px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #deded9;
+  border-radius: 0;
+}
+
+.activity-dialog-timeline .tool-activity-details {
+  margin-left: 21px;
+}
+
+.activity-dialog-timeline .tool-step-thinking {
+  position: relative;
+  margin: 10px 0 0 20px;
+  padding: 9px 0 0 16px;
+  border-top: 0;
+  border-left: 1px solid #deded9;
+}
+
+.activity-dialog-timeline .tool-objective-evaluation {
+  margin: 4px 0 12px 17px;
+  padding: 8px 0 8px 16px;
+  color: #666661;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #d8d8d3;
+  border-radius: 0;
+}
+
+.activity-dialog-timeline .tool-objective-evaluation > summary,
+.activity-dialog-timeline .tool-objective-evaluation-content {
+  color: #666661;
+}
+
+.activity-dialog-timeline .tool-objective-sequence {
+  color: #666661;
+  background: #ededeb;
+}
+
+.activity-dialog-timeline .tool-result-image:not([hidden]) {
+  display: block;
+  width: calc(100% - 20px);
+  margin-left: 20px;
+}
+
+.activity-dialog-focus {
+  border-radius: 9px;
+  outline: 2px solid #b9b9b4;
+  outline-offset: 5px;
+  animation: activityFocusFade 2.2s ease forwards;
+}
+
+@keyframes activityFocusFade {
+  0%, 65% { outline-color: #b9b9b4; }
+  100% { outline-color: transparent; }
+}
+
 @keyframes activityShimmer {
   from { background-position: 100% 0; }
   to { background-position: -120% 0; }
