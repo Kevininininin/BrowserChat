@@ -3662,17 +3662,17 @@ select {
 }
 
 .activity-dialog {
-  width: min(620px, calc(100vw - 20px));
-  max-width: 620px;
-  height: min(780px, calc(100dvh - 20px));
-  max-height: calc(100dvh - 20px);
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
   padding: 0;
   overflow: hidden;
   color: var(--text);
   background: #fff;
-  border: 1px solid #deded9;
-  border-radius: 18px;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 22%);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .activity-dialog::backdrop {
