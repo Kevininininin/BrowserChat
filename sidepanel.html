@@ -357,6 +357,23 @@
       <img id="imagePreview" alt="Expanded attachment preview" />
     </dialog>
 
+    <dialog id="activityDialog" class="activity-dialog">
+      <div class="activity-dialog-shell">
+        <header class="activity-dialog-header">
+          <div>
+            <h2 id="activityDialogTitle">Activity</h2>
+            <span id="activityDialogDuration" class="activity-dialog-duration"></span>
+          </div>
+          <button id="closeActivityDialogButton" class="icon-button" type="button" aria-label="Close activity">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18"/>
+            </svg>
+          </button>
+        </header>
+        <div id="activityDialogContent" class="activity-dialog-content"></div>
+      </div>
+    </dialog>
+
     <dialog id="fileChunkDialog" class="file-chunk-dialog">
       <div class="preview-header">
         <div>

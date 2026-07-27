@@ -153,6 +153,11 @@ const elements = {
   imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
   imagePreview: document.querySelector("#imagePreview"),
   closeImagePreviewButton: document.querySelector("#closeImagePreviewButton"),
+  activityDialog: document.querySelector("#activityDialog"),
+  activityDialogTitle: document.querySelector("#activityDialogTitle"),
+  activityDialogDuration: document.querySelector("#activityDialogDuration"),
+  activityDialogContent: document.querySelector("#activityDialogContent"),
+  closeActivityDialogButton: document.querySelector("#closeActivityDialogButton"),
   fileChunkDialog: document.querySelector("#fileChunkDialog"),
   fileChunkTitle: document.querySelector("#fileChunkTitle"),
   fileChunkList: document.querySelector("#fileChunkList"),
@@ -2006,6 +2011,76 @@ function formatToolActivityValue(value) {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function createActivityStack({ startedAt = Date.now() } = {}) {
+  const stack = document.createElement("section");
+  stack.className = "assistant-activity-stack streaming";
+  const normalizedStartedAt = typeof startedAt === "number"
+    ? startedAt
+    : new Date(startedAt).getTime();
+  stack.dataset.startedAt = String(
+    Number.isFinite(normalizedStartedAt) ? normalizedStartedAt : Date.now()
+  );
+
+  const header = document.createElement("button");
+  header.className = "assistant-activity-header";
+  header.type = "button";
+  header.setAttribute("aria-label", "Open detailed activity");
+  header.innerHTML = `
+    <span class="assistant-activity-status">Working</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+  `;
+
+  const body = document.createElement("div");
+  body.className = "assistant-activity-body";
+  stack.append(header, body);
+  header.addEventListener("click", () => openActivityDialog(stack));
+  body.addEventListener("click", (event) => {
+    if (event.target.closest("button, a")) return;
+    openActivityDialog(stack);
+  });
+  return { stack, header, body, startedAt };
+}
+
+function finishActivityStack(activityStack) {
+  if (!activityStack?.stack) return;
+  activityStack.stack.classList.remove("streaming");
+  activityStack.stack.dataset.finishedAt = String(Date.now());
+  const label = activityStack.header.querySelector(".assistant-activity-status");
+  if (label) label.textContent = "Worked";
+}
+
+function formatActivityDuration(stack) {
+  const start = Number(stack?.dataset.startedAt);
+  const end = Number(stack?.dataset.finishedAt) || Date.now();
+  if (!Number.isFinite(start)) return "";
+  const seconds = Math.max(1, Math.round((end - start) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
+function openActivityDialog(stack) {
+  if (!stack || !elements.activityDialog) return;
+  const clone = stack.querySelector(".assistant-activity-body")?.cloneNode(true);
+  if (!clone) return;
+  clone.classList.add("activity-dialog-timeline");
+  clone.querySelectorAll("[hidden]").forEach((node) => {
+    node.hidden = false;
+  });
+  clone.querySelectorAll("details").forEach((details) => {
+    details.open = true;
+  });
+  clone.querySelectorAll("summary").forEach((summary) => {
+    summary.setAttribute("tabindex", "-1");
+  });
+  elements.activityDialogTitle.textContent = stack.classList.contains("streaming")
+    ? "Activity"
+    : "Activity complete";
+  elements.activityDialogDuration.textContent = formatActivityDuration(stack);
+  elements.activityDialogContent.replaceChildren(clone);
+  if (!elements.activityDialog.open) elements.activityDialog.showModal();
+}
+
 function createSkillUsagePanel(skills = []) {
   const panel = document.createElement("details");
   panel.className = "skill-usage-panel";
@@ -2203,6 +2278,21 @@ function renderToolActivity(toolUI, activity) {
     body.className = "tool-activity-body";
     details.append(detailsSummary, body);
 
+    const imagePreview = document.createElement("button");
+    imagePreview.className = "tool-result-image";
+    imagePreview.type = "button";
+    imagePreview.hidden = true;
+    imagePreview.setAttribute("aria-label", "Open screenshot preview");
+    const image = document.createElement("img");
+    image.alt = "Screenshot captured by this tool";
+    image.dataset.previewImage = "true";
+    image.dataset.previewName = "Tool screenshot";
+    imagePreview.append(image);
+    imagePreview.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openImagePreview(image);
+    });
+
     const thinking = document.createElement("details");
     thinking.className = "tool-step-thinking";
     thinking.hidden = true;
@@ -2213,7 +2303,7 @@ function renderToolActivity(toolUI, activity) {
     thinking.append(thinkingSummary, thinkingContent);
 
     header.append(indicator, label, toolName);
-    row.append(header, details, thinking);
+    row.append(header, details, imagePreview, thinking);
     ensureToolObjectiveGroup(toolUI, activity).activities.append(row);
     activityUI = {
       ...activity,
@@ -2221,6 +2311,8 @@ function renderToolActivity(toolUI, activity) {
       label,
       toolName,
       body,
+      imagePreview,
+      image,
       thinking,
       thinkingSummary,
       thinkingContent
@@ -2241,6 +2333,14 @@ function renderToolActivity(toolUI, activity) {
     sections.push(`Result\n${formatToolActivityValue(activity.result)}`);
   }
   activityUI.body.textContent = sections.join("\n\n");
+  if (activity.previewImage) {
+    activityUI.image.src = activity.previewImage.startsWith("data:")
+      ? activity.previewImage
+      : `data:image/png;base64,${activity.previewImage}`;
+    activityUI.imagePreview.hidden = false;
+  } else {
+    activityUI.imagePreview.hidden = true;
+  }
   if (activity.thinkingAfter) {
     activityUI.thinking.hidden = false;
     activityUI.thinking.open = Boolean(activity.thinkingStreaming);
@@ -2274,6 +2374,7 @@ function appendStoredToolActivities(contentWrap, activities = [], evaluations = 
       unsupported: Boolean(activity.unsupported),
       arguments: activity.arguments,
       result: activity.result,
+      previewImage: activity.previewImage,
       thinkingAfter: activity.thinkingAfter,
       thinkingStreaming: false,
       objectiveId: activity.objectiveId,
@@ -2610,6 +2711,23 @@ function appendMessage(role, content = "", options = {}) {
   }
 
   if (role === "assistant") {
+    const hasActivity = Boolean(
+      options.skillActivities?.length ||
+      options.initialThinking ||
+      options.toolActivities?.length ||
+      options.stepEvaluations?.length
+    );
+    const activityStack = hasActivity
+      ? createActivityStack({ startedAt: options.createdAt || Date.now() })
+      : null;
+    if (activityStack) {
+      activityStack.stack.classList.remove("streaming");
+      activityStack.stack.dataset.finishedAt = String(
+        options.stoppedAt ? new Date(options.stoppedAt).getTime() : Date.now()
+      );
+      activityStack.header.querySelector(".assistant-activity-status").textContent = "Worked";
+      contentWrap.append(activityStack.stack);
+    }
     if (options.sourceReferences?.length) {
       const attachmentArea = document.createElement("div");
       attachmentArea.className = "reply-attachments";
@@ -2619,15 +2737,15 @@ function appendMessage(role, content = "", options = {}) {
       contentWrap.append(attachmentArea);
     }
     if (options.skillActivities?.length) {
-      contentWrap.append(createSkillUsagePanel(options.skillActivities));
+      activityStack.body.append(createSkillUsagePanel(options.skillActivities));
     }
     appendStoredThinking(
-      contentWrap,
+      activityStack?.body || contentWrap,
       options.initialThinking,
       Boolean(options.toolActivities?.length)
     );
     appendStoredToolActivities(
-      contentWrap,
+      activityStack?.body || contentWrap,
       options.toolActivities,
       options.stepEvaluations
     );
@@ -2916,9 +3034,12 @@ function appendAssistantMessage({
   attachmentArea.className = "reply-attachments";
   contentWrap.append(attachmentArea);
 
+  const activityStack = createActivityStack();
+  contentWrap.append(activityStack.stack);
+
   const skillUsageSlot = document.createElement("div");
   skillUsageSlot.className = "skill-usage-slot";
-  contentWrap.append(skillUsageSlot);
+  activityStack.body.append(skillUsageSlot);
 
   const processingStatus = document.createElement("div");
   processingStatus.className = "processing-status";
@@ -2972,10 +3093,10 @@ function appendAssistantMessage({
   thinkingContent.textContent = "Waiting for the model’s reasoning…";
 
   thinkingPanel.append(thinkingSummary, thinkingContent);
-  contentWrap.append(thinkingPanel);
+  activityStack.body.append(thinkingPanel);
 
   const toolUI = createToolActivityPanel();
-  contentWrap.append(toolUI.panel);
+  activityStack.body.append(toolUI.panel);
 
   const message = document.createElement("div");
   message.className = "message pending";
@@ -3000,6 +3121,7 @@ function appendAssistantMessage({
     thinkingSummary,
     thinkingContent,
     toolUI,
+    activityStack,
     setDownloadTrace: download.setTrace,
     setCursorTrace: download.setCursorTrace,
     addAttachments: (attachments) => addReplyAttachments(attachmentArea, attachments),
@@ -6598,6 +6720,9 @@ async function runToolCallingLoop(
         // Keep non-JSON tool output readable in the activity details.
       }
       Object.assign(activity, { status, result: parsedResult });
+      if (toolImages.length && activity.name === "take_screenshot") {
+        activity.previewImage = toolImages.at(-1);
+      }
       onToolCallFinish?.({ ...activity });
       const progress = evaluateObjectiveProgress(objectivePlan, activity);
       if (progress.changed) onObjectivePlanChange?.(objectivePlan);
@@ -6992,6 +7117,7 @@ async function submitPrompt(prompt) {
             assistantUI.thinkingPanel.hidden = true;
           }
         }
+        finishActivityStack(assistantUI.activityStack);
 
         renderMarkdown(assistantUI.message, text);
         assistantUI.message.classList.remove("pending");
@@ -7071,6 +7197,7 @@ async function submitPrompt(prompt) {
     }
     assistantUI.processingStatus.hidden = true;
     assistantUI.thinkingPanel.classList.remove("streaming");
+    finishActivityStack(assistantUI.activityStack);
     if (answer.thinking && !assistantUI.toolUI.activities.size) {
       assistantUI.thinkingSummary.textContent = "Thought process";
     } else if (!answer.thinking) {
@@ -7767,6 +7894,24 @@ elements.imagePreviewDialog.addEventListener("pointerdown", (event) => {
 });
 elements.imagePreviewDialog.addEventListener("close", () => {
   elements.imagePreview.removeAttribute("src");
+});
+
+elements.closeActivityDialogButton.addEventListener("click", () => {
+  elements.activityDialog.close();
+});
+
+elements.activityDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  elements.activityDialog.close();
+});
+
+elements.activityDialog.addEventListener("pointerdown", (event) => {
+  if (event.target === elements.activityDialog) elements.activityDialog.close();
+});
+
+elements.activityDialogContent.addEventListener("click", (event) => {
+  const image = event.target.closest("[data-preview-image]");
+  if (image) openImagePreview(image);
 });
 
 elements.newChatButton.addEventListener("click", () => void startNewChat());
