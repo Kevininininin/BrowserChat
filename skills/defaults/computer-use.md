@@ -26,15 +26,15 @@ Available action tools:
 
 Workflow:
 
-1. Use the runtime's initial observation. On visually dense or spatial pages such as grids, dashboards, maps, canvases, and image-heavy results, inspect the attached screenshot first. On forms, menus, and text-heavy pages, use the compact DOM first.
+1. Treat the runtime's initial screenshot as the primary browser observation and inspect it before requesting DOM context.
    If the current website or tab identity is uncertain, call `get_current_website` first or at any later point to re-check it.
 2. Identify the smallest next action that advances the user's objective. Use only an element reference from the latest observation.
 3. Perform one action at a time.
 4. Work only on the active objective supplied by the runtime. Treat its predicates as the definition of completion.
 5. Use the action tool's structured result as the first verification signal. Clicks and submitted searches include their resulting observation. Follow `requiresObservation` instead of observing reflexively.
 6. When the desired control text is known but no reference is clear, call `find_interactive_elements` before any new observation or captured-text search.
-7. Do not take a screenshot after every action. Use an automatically attached screenshot when present; call `take_screenshot` only when fresh visual evidence is necessary.
-8. Do not call `observe_page` after every action. Observe again only when no resulting observation was returned, a reference becomes stale, or evidence is genuinely insufficient.
+7. Prefer `take_screenshot` for fresh state discovery when the visible page changed and visual evidence is absent. Do not repeat it when the visible state has not changed.
+8. Use `observe_page` as the backup and grounding layer: call it when visual capture fails, exact text or semantic state is needed, or an action requires a fresh element reference.
 9. Text entry and form submission are separate states. Use `fill_field` with `submit: true` when a search-like field should immediately run the query.
 10. When the task requires understanding substantial text already present in the captured page, call `search_captured_page_text` with one focused query. Never use it to find a control or execute a website search.
 11. Use `scroll_page` when the needed control is outside the returned viewport. It returns a fresh compact observation.
@@ -66,11 +66,12 @@ Safety rules:
 
 Example efficient sequence:
 
-1. Use the automatic compact observation and any attached visual observation
-2. `find_interactive_elements` if the desired control reference is unclear
-3. `navigate_to_url` for a known destination, `fill_field` with `submit: true` for a website search, or `click_element` for the chosen control
-4. Use the returned post-action observation directly
-5. Continue until the active objective predicates are satisfied
-6. `search_captured_page_text` only if substantial non-control text must be understood
-7. `take_screenshot` only if fresh visual recovery is genuinely needed
-8. `complete_task` with validated evidence
+1. Inspect the automatic screenshot
+2. `observe_page` only when exact DOM grounding or element references are required
+3. `find_interactive_elements` if the desired control reference is unclear
+4. `navigate_to_url` for a known destination, `fill_field` with `submit: true` for a website search, or `click_element` for the chosen control
+5. Use the returned post-action observation directly
+6. Continue until the active objective predicates are satisfied
+7. `search_captured_page_text` only if substantial non-control text must be understood
+8. `take_screenshot` when fresh visual state discovery is needed
+9. `complete_task` with validated evidence

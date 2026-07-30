@@ -372,7 +372,56 @@ h1 {
 .switch-control b { min-width: 20px; font-size: 10px; }
 
 .skills-list { display: grid; gap: 10px; }
-.skill-header-actions { display: flex; align-items: center; gap: 8px; }
+.skill-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.create-skill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.create-skill-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+.record-skill-callout {
+  display: grid;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 17px 18px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  background: linear-gradient(135deg, #f3f0fb, #fbfafc);
+  border: 1px solid #ddd5ef;
+  border-radius: 14px;
+}
+.record-skill-callout-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  color: #64498f;
+  background: #fff;
+  border: 1px solid #ddd5ef;
+  border-radius: 11px;
+  place-items: center;
+}
+.record-skill-callout-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+.record-skill-callout > div:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.record-skill-callout strong { font-size: 12px; }
+.record-skill-callout span { color: var(--muted); font-size: 10px; line-height: 1.5; }
 .skill-import-status {
   min-height: 18px;
   margin: 10px 0 0;
@@ -890,6 +939,8 @@ h1 {
 
 @media (max-width: 850px) {
   .rag-field-row { grid-template-columns: 1fr; }
+  .record-skill-callout { grid-template-columns: auto minmax(0, 1fr); }
+  .record-skill-callout > button { grid-column: 2; justify-self: start; }
 }
 
 .skill-card {

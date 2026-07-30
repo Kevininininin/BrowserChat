@@ -8,6 +8,8 @@ const skillElements = {
   list: document.querySelector("#skillsList"),
   emptyState: document.querySelector("#skillsEmptyState"),
   createButton: document.querySelector("#createSkillButton"),
+  recordCalloutButton: document.querySelector("#recordSkillCalloutButton"),
+  writeButton: document.querySelector("#writeSkillButton"),
   importButton: document.querySelector("#importSkillButton"),
   importInput: document.querySelector("#importSkillInput"),
   importStatus: document.querySelector("#skillImportStatus"),
@@ -1024,6 +1026,37 @@ function closeSkillEditor() {
   skillElements.form.reset();
 }
 
+async function openRecordSkillFlow() {
+  skillElements.createButton.disabled = true;
+  skillElements.recordCalloutButton.disabled = true;
+  skillElements.importStatus.textContent = "Opening the side panel…";
+  try {
+    const stored = await chrome.storage.local.get("browserChatSkillRecording");
+    const existing = stored.browserChatSkillRecording;
+    if (!existing?.status) {
+      await chrome.storage.local.set({
+        browserChatSkillRecording: {
+          status: "ready",
+          events: [],
+          requestedAt: Date.now()
+        }
+      });
+    }
+    const currentWindow = await chrome.windows.getCurrent();
+    await chrome.sidePanel.open({ windowId: currentWindow.id });
+    skillElements.importStatus.textContent =
+      existing?.status === "recording"
+        ? "Your active skill recording is open in the side panel."
+        : "Skill recorder opened in the side panel. Navigate to the workflow’s starting page when you’re ready.";
+  } catch (error) {
+    skillElements.importStatus.textContent =
+      error?.message || "BrowserChat could not open the skill recorder.";
+  } finally {
+    skillElements.createButton.disabled = false;
+    skillElements.recordCalloutButton.disabled = false;
+  }
+}
+
 async function loadSkillsSettings() {
   const state = await BrowserChatSkills.load();
   skillsEnabled = state.enabled;
@@ -1038,7 +1071,9 @@ skillElements.enabledToggle.addEventListener("change", () => {
 skillElements.architectureToggle.addEventListener("change", () => {
   void updateSkillsEnabled(skillElements.architectureToggle.checked);
 });
-skillElements.createButton.addEventListener("click", () => openSkillEditor());
+skillElements.createButton.addEventListener("click", () => void openRecordSkillFlow());
+skillElements.recordCalloutButton.addEventListener("click", () => void openRecordSkillFlow());
+skillElements.writeButton.addEventListener("click", () => openSkillEditor());
 skillElements.importButton.addEventListener("click", () => {
   skillElements.importInput.click();
 });

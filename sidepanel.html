@@ -278,6 +278,133 @@
       </footer>
     </div>
 
+    <section id="recordSkillShell" class="record-skill-shell" aria-labelledby="recordSkillTitle" hidden>
+      <header class="record-skill-topbar">
+        <button id="closeRecordSkillButton" class="record-skill-icon-button" type="button" aria-label="Close skill recorder">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+        <div>
+          <strong>Create skill</strong>
+          <span id="recordSkillHeaderStatus">Ready to record</span>
+        </div>
+        <span id="recordSkillLiveBadge" class="record-skill-live-badge" hidden><i></i>Recording</span>
+      </header>
+
+      <main class="record-skill-main">
+        <section id="recordSkillReady" class="record-skill-stage">
+          <div class="record-skill-hero-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+          <span class="record-skill-eyebrow">Teach by doing</span>
+          <h1 id="recordSkillTitle">Record a workflow</h1>
+          <p>Navigate to the page where your task begins, then start recording. BrowserChat captures actions and page structure—not video.</p>
+          <div class="record-skill-privacy-card">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8.4 7 10 4.2-1.6 7-5.4 7-10V6l-7-3Z"/><path d="M9 12.5 11 14l4-4"/></svg>
+            <div>
+              <strong>Private by design</strong>
+              <span>Passwords, payment fields, and typed values are never stored. Recording stays local until you choose a model to compile it.</span>
+            </div>
+          </div>
+          <ol class="record-skill-checklist">
+            <li><span>1</span><div><strong>Open the starting page</strong><small>Switch away from Settings to the tab where the workflow begins.</small></div></li>
+            <li><span>2</span><div><strong>Perform the task naturally</strong><small>Clicks, navigation, and semantic element details appear here live.</small></div></li>
+            <li><span>3</span><div><strong>Stop and compile</strong><small>Choose a model to turn the action log into reusable instructions.</small></div></li>
+          </ol>
+          <button id="startSkillRecordingButton" class="record-skill-primary-button" type="button">
+            <span class="record-dot" aria-hidden="true"></span>
+            Start recording
+          </button>
+          <p id="recordSkillReadyStatus" class="record-skill-status" role="status"></p>
+        </section>
+
+        <section id="recordSkillRecording" class="record-skill-stage record-skill-recording-stage" hidden>
+          <div class="record-skill-recording-heading">
+            <div>
+              <span class="record-skill-eyebrow">Live capture</span>
+              <h1>Perform your workflow</h1>
+              <p>Keep this panel open while you work in the page.</p>
+            </div>
+            <time id="recordSkillTimer">00:00</time>
+          </div>
+          <div class="record-skill-current-page">
+            <span id="recordSkillFaviconFallback" aria-hidden="true">◎</span>
+            <div><strong id="recordSkillPageTitle">Waiting for the page…</strong><small id="recordSkillPageUrl"></small></div>
+          </div>
+          <div class="record-skill-log-heading">
+            <strong>Captured actions</strong>
+            <span id="recordSkillEventCount">0 actions</span>
+          </div>
+          <ol id="recordSkillEventList" class="record-skill-event-list" aria-live="polite"></ol>
+          <div id="recordSkillEventEmpty" class="record-skill-event-empty">
+            <span class="record-skill-listening"><i></i><i></i><i></i></span>
+            <strong>Listening for your first action</strong>
+            <span>Clicks and navigation will appear here as you work.</span>
+          </div>
+          <button id="stopSkillRecordingButton" class="record-skill-stop-button" type="button">
+            <span aria-hidden="true"></span>
+            Stop recording
+          </button>
+        </section>
+
+        <section id="recordSkillReview" class="record-skill-stage" hidden>
+          <div class="record-skill-hero-icon complete" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 12.5 10.5 16 17 8.5"/><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <span class="record-skill-eyebrow">Recording complete</span>
+          <h1>Compile your new skill</h1>
+          <p id="recordSkillReviewSummary">Review the capture settings, then ask Ollama to write reusable instructions.</p>
+          <div class="record-skill-compile-card">
+            <label>
+              <span>Model</span>
+              <select id="recordSkillModelSelect" aria-label="Model for compiling skill"></select>
+            </label>
+            <label>
+              <span>Thinking</span>
+              <select id="recordSkillThinkingSelect" aria-label="Thinking for compiling skill">
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+          </div>
+          <div class="record-skill-compile-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+            <span>The model receives the structured action log and a system prompt asking it to generalize changing values into inputs, preserve stable element targets, and add verification steps.</span>
+          </div>
+          <button id="compileSkillButton" class="record-skill-primary-button" type="button">Compile skill</button>
+          <button id="recordAgainButton" class="record-skill-text-button" type="button">Record again</button>
+          <p id="recordSkillCompileStatus" class="record-skill-status" role="status"></p>
+        </section>
+
+        <section id="recordSkillCompiling" class="record-skill-stage" hidden>
+          <div class="record-skill-spinner" aria-hidden="true"></div>
+          <span class="record-skill-eyebrow">Working locally</span>
+          <h1>Creating your skill</h1>
+          <p>Ollama is turning the action sequence into a reusable workflow with inputs, stable targets, and checks.</p>
+          <div class="record-skill-progress">
+            <span></span>
+          </div>
+        </section>
+
+        <section id="recordSkillDone" class="record-skill-stage" hidden>
+          <div class="record-skill-hero-icon complete" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 12.5 10.5 16 17 8.5"/><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <span class="record-skill-eyebrow">Skill ready</span>
+          <h1 id="recordSkillDoneName">Your skill was created</h1>
+          <p id="recordSkillDoneDescription"></p>
+          <div class="record-skill-done-card">
+            <span>Saved locally</span>
+            <strong id="recordSkillDoneSteps"></strong>
+          </div>
+          <button id="finishRecordSkillButton" class="record-skill-primary-button" type="button">Done</button>
+          <button id="viewRecordedSkillButton" class="record-skill-text-button" type="button">View in Skills settings</button>
+        </section>
+      </main>
+    </section>
+
     <dialog id="contextPreviewDialog" class="context-preview-dialog">
       <div class="preview-header">
         <div>

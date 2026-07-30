@@ -65,6 +65,7 @@ if (globalThis.mermaid) {
 }
 
 const elements = {
+  appShell: document.querySelector(".app-shell"),
   conversation: document.querySelector("#conversation"),
   emptyState: document.querySelector("#emptyState"),
   form: document.querySelector("#chatForm"),
@@ -175,6 +176,35 @@ const elements = {
   closeFileChunkButton: document.querySelector("#closeFileChunkButton"),
   cancelFileChunkButton: document.querySelector("#cancelFileChunkButton"),
   saveFileChunkButton: document.querySelector("#saveFileChunkButton"),
+  recordSkillShell: document.querySelector("#recordSkillShell"),
+  recordSkillHeaderStatus: document.querySelector("#recordSkillHeaderStatus"),
+  recordSkillLiveBadge: document.querySelector("#recordSkillLiveBadge"),
+  recordSkillReady: document.querySelector("#recordSkillReady"),
+  recordSkillRecording: document.querySelector("#recordSkillRecording"),
+  recordSkillReview: document.querySelector("#recordSkillReview"),
+  recordSkillCompiling: document.querySelector("#recordSkillCompiling"),
+  recordSkillDone: document.querySelector("#recordSkillDone"),
+  closeRecordSkillButton: document.querySelector("#closeRecordSkillButton"),
+  startSkillRecordingButton: document.querySelector("#startSkillRecordingButton"),
+  stopSkillRecordingButton: document.querySelector("#stopSkillRecordingButton"),
+  recordAgainButton: document.querySelector("#recordAgainButton"),
+  compileSkillButton: document.querySelector("#compileSkillButton"),
+  finishRecordSkillButton: document.querySelector("#finishRecordSkillButton"),
+  viewRecordedSkillButton: document.querySelector("#viewRecordedSkillButton"),
+  recordSkillReadyStatus: document.querySelector("#recordSkillReadyStatus"),
+  recordSkillCompileStatus: document.querySelector("#recordSkillCompileStatus"),
+  recordSkillTimer: document.querySelector("#recordSkillTimer"),
+  recordSkillPageTitle: document.querySelector("#recordSkillPageTitle"),
+  recordSkillPageUrl: document.querySelector("#recordSkillPageUrl"),
+  recordSkillEventCount: document.querySelector("#recordSkillEventCount"),
+  recordSkillEventList: document.querySelector("#recordSkillEventList"),
+  recordSkillEventEmpty: document.querySelector("#recordSkillEventEmpty"),
+  recordSkillReviewSummary: document.querySelector("#recordSkillReviewSummary"),
+  recordSkillModelSelect: document.querySelector("#recordSkillModelSelect"),
+  recordSkillThinkingSelect: document.querySelector("#recordSkillThinkingSelect"),
+  recordSkillDoneName: document.querySelector("#recordSkillDoneName"),
+  recordSkillDoneDescription: document.querySelector("#recordSkillDoneDescription"),
+  recordSkillDoneSteps: document.querySelector("#recordSkillDoneSteps"),
   suggestions: document.querySelectorAll(".suggestion")
 };
 
@@ -233,6 +263,12 @@ let activityDialogScrollTimer = 0;
 const activityPreviewFollowState = new Map();
 const modelSelectMeasureCanvas = document.createElement("canvas");
 const OLLAMA_SERVE_COMMAND = 'OLLAMA_ORIGINS="chrome-extension://*" ollama serve';
+const SKILL_RECORDING_STORAGE_KEY = "browserChatSkillRecording";
+const skillRecorderPanelPort = chrome.runtime.connect({
+  name: "browserchat.skillRecorder.panel"
+});
+let skillRecordingState = null;
+let skillRecordingTimer = null;
 
 function sizeModelSelectToCurrentOption() {
   const select = elements.modelSelect;
@@ -4238,6 +4274,7 @@ async function loadModels() {
     renderOllamaSetupPanel();
   } finally {
     updateSendButton();
+    syncSkillRecorderModelOptions();
   }
 }
 
@@ -5811,18 +5848,55 @@ async function performAgentElementAction(
       }
 
       element.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-      await new Promise((resolve) => setTimeout(resolve, 420));
-      const rect = element.getBoundingClientRect();
+      const waitForStableRect = async () => {
+        let previous = element.getBoundingClientRect();
+        let stableFrames = 0;
+        const startedAt = performance.now();
+        while (stableFrames < 3 && performance.now() - startedAt < 1_500) {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          if (!element.isConnected || !isVisible(element)) {
+            throw new Error(
+              "The referenced element moved or disappeared before it could be clicked. Call observe_page again."
+            );
+          }
+          const next = element.getBoundingClientRect();
+          const movement = Math.max(
+            Math.abs(next.left - previous.left),
+            Math.abs(next.top - previous.top),
+            Math.abs(next.width - previous.width),
+            Math.abs(next.height - previous.height)
+          );
+          stableFrames = movement < 1 ? stableFrames + 1 : 0;
+          previous = next;
+        }
+        return previous;
+      };
+      let rect = await waitForStableRect();
       const cursor = globalThis.__browserChatControlIndicator;
-      const targetX = rect.left + Math.min(rect.width / 2, Math.max(8, rect.width - 8));
-      const targetY = rect.top + Math.min(rect.height / 2, Math.max(8, rect.height - 8));
+      const getTargetPoint = (targetRect) => ({
+        x: targetRect.left + targetRect.width / 2,
+        y: targetRect.top + targetRect.height / 2
+      });
+      let targetPoint = getTargetPoint(rect);
       cursor?.setAction?.(
         action === "fill" ? `Filling “${current.label || "field"}”` :
           action === "select" ? `Selecting “${current.label || "option"}”` :
             action === "press" ? `Pressing ${payload.key || "a key"}` :
             `Clicking “${current.label || "control"}”`
       );
-      await cursor?.moveTo?.(targetX, targetY);
+      await cursor?.moveTo?.(targetPoint.x, targetPoint.y);
+      rect = await waitForStableRect();
+      const updatedTargetPoint = getTargetPoint(rect);
+      if (
+        Math.hypot(
+          updatedTargetPoint.x - targetPoint.x,
+          updatedTargetPoint.y - targetPoint.y
+        ) > 2
+      ) {
+        targetPoint = updatedTargetPoint;
+        await cursor?.moveTo?.(targetPoint.x, targetPoint.y);
+        rect = await waitForStableRect();
+      }
 
       if (action === "fill") {
         if (!element.matches("input, textarea, [contenteditable='true']")) {
@@ -5984,9 +6058,30 @@ async function performAgentElementAction(
 
       if (action === "click") {
         const beforeChecked = "checked" in element ? Boolean(element.checked) : null;
+        if (!element.isConnected || !isVisible(element)) {
+          throw new Error(
+            "The referenced element disappeared before the click was dispatched. Call observe_page again."
+          );
+        }
+        const hitElement = document.elementFromPoint(targetPoint.x, targetPoint.y);
+        if (
+          !hitElement ||
+          !(hitElement === element ||
+            element.contains(hitElement) ||
+            hitElement.contains(element))
+        ) {
+          throw new Error(
+            "Another element covered the click target before dispatch. Call observe_page again."
+          );
+        }
         element.focus();
         cursor?.click?.();
-        await new Promise((resolve) => setTimeout(resolve, 160));
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        if (!element.isConnected) {
+          throw new Error(
+            "The referenced element was replaced before the click was dispatched. Call observe_page again."
+          );
+        }
         element.click();
         return {
           action: "click_element",
@@ -6272,14 +6367,8 @@ async function navigateToUrlForAgent(
   if (!openedTab?.id) {
     throw new Error("The browser could not create a new tab.");
   }
-  const deadline = Date.now() + 8_000;
-  let settledTab = openedTab;
-  while (Date.now() < deadline) {
-    signal?.throwIfAborted();
-    settledTab = await chrome.tabs.get(openedTab.id);
-    if (settledTab.status === "complete" && settledTab.url) break;
-    await waitWithSignal(100, signal);
-  }
+  allowBrowserControlTab(openedTab);
+  const settledTab = await waitForReadableBrowserTab(openedTab.id, { signal });
   invalidateAgentObservation();
   const observation = await observePageForAgent({ signal, objective });
   return {
@@ -6787,6 +6876,63 @@ function waitWithSignal(milliseconds, signal) {
     };
     if (signal?.aborted) return abort();
     signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function waitForReadableBrowserTab(
+  tabId,
+  { signal, timeoutMilliseconds = 15_000 } = {}
+) {
+  const isReady = (tab) => {
+    if (!tab?.url || tab.status !== "complete") return false;
+    try {
+      return ["http:", "https:"].includes(new URL(tab.url).protocol);
+    } catch {
+      return false;
+    }
+  };
+
+  const currentTab = await chrome.tabs.get(tabId);
+  if (isReady(currentTab)) return currentTab;
+
+  return new Promise((resolve, reject) => {
+    let timeout;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const finish = async () => {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (!isReady(tab)) return;
+        cleanup();
+        resolve(tab);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+    const onUpdated = (updatedTabId, changeInfo) => {
+      if (
+        updatedTabId === tabId &&
+        (changeInfo.status === "complete" || changeInfo.url)
+      ) {
+        void finish();
+      }
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("The agent run was stopped.", "AbortError"));
+    };
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("The opened page did not finish loading in time."));
+    }, timeoutMilliseconds);
+    void finish();
   });
 }
 
@@ -8164,77 +8310,105 @@ async function runToolCallingLoop(
 
   if (orchestrationEnabled) {
     orchestration.transition(BrowserChatOrchestration.PHASES.OBSERVE, {
-      reason: "Initial browser state is required before choosing an action."
+      reason: "Initial visual browser state is required before choosing an action."
     });
-    const initialObservationCall = {
-      function: { name: "observe_page", arguments: {} }
-    };
-    const activity = {
-      id: crypto.randomUUID(),
-      name: "observe_page",
-      status: "running",
-      startedAt: new Date().toISOString(),
-      arguments: {},
-      synthetic: true,
-      ...getObjectiveContext(objectivePlan)
-    };
-    toolActivities.push(activity);
-    await onToolCallStart?.({ ...activity });
-    const content = await BrowserChatTools.executeCall(initialObservationCall, {
-      signal,
-      objective: getActiveObjective(objectivePlan)
-    });
-    let parsedResult = content;
-    let status = "completed";
-    try {
-      parsedResult = JSON.parse(content);
-      if (parsedResult?.ok === false) status = "failed";
-    } catch {
-      // Preserve non-JSON tool output in the activity trace.
-    }
-    Object.assign(activity, {
-      status,
-      result: parsedResult,
-      finishedAt: new Date().toISOString()
-    });
-    onToolCallFinish?.({ ...activity });
-    const progress = evaluateObjectiveProgress(objectivePlan, activity);
-    if (progress.changed) onObjectivePlanChange?.(objectivePlan);
-    const initialObservationInstruction =
-      `<initial_browser_observation>${content}</initial_browser_observation> ` +
-      "This observation was captured automatically. Choose one smallest useful next action.";
-    messages.push({
-      role: "system",
-      content: initialObservationInstruction
-    });
-    recordSystemInjection(
-      "initial_browser_observation",
-      initialObservationInstruction,
-      { observationId: agentObservationState.observationId || null }
-    );
-    if (
-      shouldAttachAutomaticScreenshot(agentObservationState.page) &&
-      await selectedModelSupportsVision(signal)
-    ) {
-      const automaticImages = [];
+    const initialImages = [];
+    let initialScreenshotResult = null;
+    if (await selectedModelSupportsVision(signal)) {
+      const screenshotActivity = {
+        id: crypto.randomUUID(),
+        name: "take_screenshot",
+        status: "running",
+        startedAt: new Date().toISOString(),
+        arguments: {},
+        synthetic: true,
+        ...getObjectiveContext(objectivePlan)
+      };
+      toolActivities.push(screenshotActivity);
+      await onToolCallStart?.({ ...screenshotActivity });
       try {
-        await takeScreenshotForAgent({
+        initialScreenshotResult = await takeScreenshotForAgent({
           signal,
-          addImage: (base64) => automaticImages.push(base64)
+          addImage: (base64) => initialImages.push(base64)
         });
-        if (automaticImages.length) {
-          lastAutomaticScreenshotSignature =
-            agentObservationState.stateSignature || "";
-          messages.push({
-            role: "user",
-            content:
-              "Automatic visual observation of this dense viewport. Use the image to understand spatial grouping, then use exact visible text with a locator tool for actions or destinations.",
-            images: automaticImages
-          });
-        }
-      } catch {
-        // Screenshot permission or model support may be unavailable; compact DOM remains usable.
+        Object.assign(screenshotActivity, {
+          status: "completed",
+          result: { ok: true, result: initialScreenshotResult },
+          previewImage: initialImages.at(-1),
+          finishedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        Object.assign(screenshotActivity, {
+          status: "failed",
+          result: {
+            ok: false,
+            error: error?.message || "The initial screenshot could not be captured."
+          },
+          finishedAt: new Date().toISOString()
+        });
       }
+      onToolCallFinish?.({ ...screenshotActivity });
+    }
+
+    if (initialScreenshotResult && initialImages.length) {
+      messages.push({
+        role: "user",
+        content:
+          "Initial visual browser observation. Inspect this screenshot before choosing an action. Use observe_page only when exact text, semantic state, or element references are needed and cannot be resolved visually.",
+        images: initialImages
+      });
+      recordSystemInjection(
+        "initial_browser_screenshot",
+        "A screenshot was captured automatically as the primary initial browser observation.",
+        { pageUrl: initialScreenshotResult.pageUrl || "" }
+      );
+    } else {
+      const initialObservationCall = {
+        function: { name: "observe_page", arguments: {} }
+      };
+      const activity = {
+        id: crypto.randomUUID(),
+        name: "observe_page",
+        status: "running",
+        startedAt: new Date().toISOString(),
+        arguments: {},
+        synthetic: true,
+        ...getObjectiveContext(objectivePlan)
+      };
+      toolActivities.push(activity);
+      await onToolCallStart?.({ ...activity });
+      const content = await BrowserChatTools.executeCall(initialObservationCall, {
+        signal,
+        objective: getActiveObjective(objectivePlan)
+      });
+      let parsedResult = content;
+      let status = "completed";
+      try {
+        parsedResult = JSON.parse(content);
+        if (parsedResult?.ok === false) status = "failed";
+      } catch {
+        // Preserve non-JSON tool output in the activity trace.
+      }
+      Object.assign(activity, {
+        status,
+        result: parsedResult,
+        finishedAt: new Date().toISOString()
+      });
+      onToolCallFinish?.({ ...activity });
+      const progress = evaluateObjectiveProgress(objectivePlan, activity);
+      if (progress.changed) onObjectivePlanChange?.(objectivePlan);
+      const initialObservationInstruction =
+        `<initial_browser_observation>${content}</initial_browser_observation> ` +
+        "Visual capture was unavailable, so this DOM observation was captured as the fallback. Choose one smallest useful next action.";
+      messages.push({
+        role: "system",
+        content: initialObservationInstruction
+      });
+      recordSystemInjection(
+        "initial_browser_observation_fallback",
+        initialObservationInstruction,
+        { observationId: agentObservationState.observationId || null }
+      );
     }
     orchestration.transition(BrowserChatOrchestration.PHASES.CHOOSE, {
       observationId: agentObservationState.observationId || null,
@@ -10156,6 +10330,380 @@ elements.settingsButton.addEventListener("click", () => {
   void chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
 });
 
+function formatSkillRecordingDuration(startedAt = Date.now()) {
+  const totalSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function recordedActionLabel(event = {}) {
+  const name = event.target?.name || event.target?.role || event.target?.tag || "";
+  if (event.kind === "navigation") return "Navigated to a page";
+  if (event.kind === "submit") return `Submitted ${name || "a form"}`;
+  if (event.kind === "change") return `Changed ${name || "a field"}`;
+  if (event.kind === "keypress") return `Pressed Enter in ${name || "a control"}`;
+  return `Clicked ${name || "an element"}`;
+}
+
+function recordedActionDetail(event = {}) {
+  if (event.kind === "navigation") {
+    try {
+      return new URL(event.pageUrl).hostname || event.pageUrl;
+    } catch {
+      return event.pageUrl || "Page changed";
+    }
+  }
+  const details = [
+    event.target?.role || event.target?.tag,
+    event.target?.selector
+  ].filter(Boolean);
+  return details.join(" · ") || event.hostname || "Browser action";
+}
+
+function syncSkillRecorderModelOptions() {
+  const select = elements.recordSkillModelSelect;
+  const current = select.value || elements.modelSelect.value;
+  const options = [...elements.modelSelect.options]
+    .filter((option) => option.value)
+    .map((option) => ({ value: option.value, label: option.textContent }));
+  select.replaceChildren(
+    ...options.map((option) => new Option(option.label, option.value))
+  );
+  if (options.some((option) => option.value === current)) select.value = current;
+  elements.recordSkillThinkingSelect.value = elements.thinkingSelect.value || "on";
+  elements.compileSkillButton.disabled = !select.value;
+}
+
+function updateSkillRecordingTimer() {
+  if (skillRecordingState?.status !== "recording") return;
+  elements.recordSkillTimer.textContent =
+    formatSkillRecordingDuration(skillRecordingState.startedAt);
+}
+
+function renderRecordedActions(events = []) {
+  elements.recordSkillEventCount.textContent =
+    `${events.length} ${events.length === 1 ? "action" : "actions"}`;
+  elements.recordSkillEventEmpty.hidden = events.length > 0;
+  elements.recordSkillEventList.innerHTML = events.map((event) => {
+    const icon =
+      event.kind === "navigation" ? "↗" :
+      event.kind === "change" ? "⌨" :
+      event.kind === "submit" ? "✓" :
+      event.kind === "keypress" ? "↵" : "↖";
+    const elapsed = Math.max(
+      0,
+      Math.floor((Number(event.timestamp) - Number(skillRecordingState?.startedAt)) / 1000)
+    );
+    return `
+      <li class="record-skill-event-item">
+        <span class="record-skill-event-icon" aria-hidden="true">${icon}</span>
+        <div class="record-skill-event-copy">
+          <strong>${escapeHtml(recordedActionLabel(event))}</strong>
+          <span>${escapeHtml(recordedActionDetail(event))}</span>
+        </div>
+        <time>+${elapsed}s</time>
+      </li>
+    `;
+  }).join("");
+  const list = elements.recordSkillEventList;
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderSkillRecorder(state = null) {
+  skillRecordingState = state;
+  const visible = Boolean(state?.status);
+  elements.recordSkillShell.hidden = !visible;
+  elements.appShell.classList.toggle("record-skill-hidden", visible);
+  clearInterval(skillRecordingTimer);
+  skillRecordingTimer = null;
+  if (!visible) return;
+
+  const normalizedStatus = state.status === "compiling" ? "compiling" : state.status;
+  const stages = {
+    ready: elements.recordSkillReady,
+    recording: elements.recordSkillRecording,
+    review: elements.recordSkillReview,
+    compiling: elements.recordSkillCompiling,
+    done: elements.recordSkillDone
+  };
+  for (const [status, stage] of Object.entries(stages)) {
+    stage.hidden = status !== normalizedStatus;
+  }
+
+  const headerLabels = {
+    ready: "Ready to record",
+    recording: "Capturing actions",
+    review: "Ready to compile",
+    compiling: "Compiling with Ollama",
+    done: "Skill created"
+  };
+  elements.recordSkillHeaderStatus.textContent =
+    headerLabels[normalizedStatus] || "Create from recording";
+  elements.recordSkillLiveBadge.hidden = normalizedStatus !== "recording";
+  elements.closeRecordSkillButton.disabled = normalizedStatus === "compiling";
+
+  if (normalizedStatus === "ready") {
+    elements.recordSkillReadyStatus.textContent = "";
+  }
+  if (normalizedStatus === "recording") {
+    const events = Array.isArray(state.events) ? state.events : [];
+    elements.recordSkillPageTitle.textContent = state.pageTitle || "Current page";
+    elements.recordSkillPageUrl.textContent = state.pageUrl || "";
+    renderRecordedActions(events);
+    updateSkillRecordingTimer();
+    skillRecordingTimer = setInterval(updateSkillRecordingTimer, 1000);
+  }
+  if (normalizedStatus === "review") {
+    const count = state.events?.length || 0;
+    const hostCount = new Set(
+      (state.events || []).map((event) => event.hostname).filter(Boolean)
+    ).size;
+    elements.recordSkillReviewSummary.textContent =
+      `Captured ${count} ${count === 1 ? "action" : "actions"} across ${hostCount || 1} ${hostCount === 1 ? "site" : "sites"}. Choose how Ollama should compile the workflow.`;
+    elements.recordSkillCompileStatus.textContent = "";
+    syncSkillRecorderModelOptions();
+  }
+  if (normalizedStatus === "done" && state.createdSkill) {
+    elements.recordSkillDoneName.textContent = state.createdSkill.name;
+    elements.recordSkillDoneDescription.textContent =
+      state.createdSkill.description || "Reusable instructions saved to your local skills.";
+    const sectionCount = (
+      state.createdSkill.instructions.match(/^#{1,3}\s+/gm) || []
+    ).length;
+    elements.recordSkillDoneSteps.textContent =
+      `${state.events?.length || 0} recorded actions distilled into ${sectionCount || "a set of"} instruction sections.`;
+  }
+}
+
+async function loadSkillRecording() {
+  const stored = await chrome.storage.local.get(SKILL_RECORDING_STORAGE_KEY);
+  const state = stored[SKILL_RECORDING_STORAGE_KEY] || null;
+  if (state?.status === "compiling") {
+    state.status = "review";
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: state });
+  }
+  renderSkillRecorder(state);
+}
+
+async function removeTemporaryRecordingPermission(state = skillRecordingState) {
+  if (!state?.temporaryAllUrls) return;
+  try {
+    await chrome.permissions.remove({ origins: ["<all_urls>"] });
+  } catch {
+    // The grant may already have been removed outside BrowserChat.
+  }
+}
+
+async function startSkillRecording() {
+  elements.startSkillRecordingButton.disabled = true;
+  elements.recordSkillReadyStatus.textContent = "Preparing page access…";
+  let temporaryAllUrls = false;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
+      throw new Error("Open a regular website in the active tab, then try again.");
+    }
+    const alreadyGranted = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+    if (!alreadyGranted) {
+      const granted = await chrome.permissions.request({ origins: ["<all_urls>"] });
+      if (!granted) {
+        throw new Error("Page access is required to capture workflow actions.");
+      }
+      temporaryAllUrls = true;
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: "browserchat.skillRecorder.start",
+      tabId: tab.id,
+      windowId: tab.windowId,
+      pageUrl: tab.url,
+      pageTitle: tab.title || "",
+      temporaryAllUrls
+    });
+    if (!response?.ok) throw new Error(response?.error || "Could not start recording.");
+    renderSkillRecorder(response.recording);
+  } catch (error) {
+    if (temporaryAllUrls) {
+      await chrome.permissions.remove({ origins: ["<all_urls>"] }).catch(() => {});
+    }
+    elements.recordSkillReadyStatus.textContent =
+      error?.message || "BrowserChat could not start recording.";
+  } finally {
+    elements.startSkillRecordingButton.disabled = false;
+  }
+}
+
+async function stopSkillRecording() {
+  elements.stopSkillRecordingButton.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "browserchat.skillRecorder.stop"
+    });
+    if (!response?.ok) throw new Error(response?.error || "Could not stop recording.");
+    await removeTemporaryRecordingPermission(response.recording);
+    const recording = { ...response.recording, temporaryAllUrls: false };
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: recording });
+    renderSkillRecorder(recording);
+  } catch (error) {
+    setError(error?.message || "Could not stop the skill recording.");
+  } finally {
+    elements.stopSkillRecordingButton.disabled = false;
+  }
+}
+
+function stripSkillMarkdownFence(value = "") {
+  return String(value)
+    .trim()
+    .replace(/^```(?:markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+async function compileRecordedSkill() {
+  const model = elements.recordSkillModelSelect.value;
+  const events = skillRecordingState?.events || [];
+  if (!model || events.length < 2) {
+    elements.recordSkillCompileStatus.textContent =
+      model ? "Record at least one action before compiling." : "Choose an available model.";
+    return;
+  }
+
+  elements.compileSkillButton.disabled = true;
+  elements.recordSkillCompileStatus.textContent = "";
+  const compilingState = { ...skillRecordingState, status: "compiling" };
+  await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: compilingState });
+  renderSkillRecorder(compilingState);
+
+  const systemPrompt = `You create reusable BrowserChat skills from a structured browser-action recording.
+Return only valid Markdown with this exact shape:
+---
+name: "Short action-oriented name"
+description: "One sentence describing when this skill applies and its outcome"
+---
+
+# Goal
+...
+
+# Inputs
+- ...
+
+# Steps
+1. ...
+
+# Verification
+- ...
+
+Use the recording as evidence of the intended workflow, not as a demand to reproduce every incidental click.
+Generalize user-specific or changing values into named inputs and placeholders.
+Prefer stable semantic targets (visible label, role, accessible name, URL pattern, or data attribute) over brittle CSS paths.
+Include the starting site/page requirements, navigation, action order, expected state after important steps, and a final verification.
+If typed content was redacted, infer the input's purpose from its label and make its value a required skill input.
+Never invent or expose passwords, tokens, payment data, or other secrets.
+Do not require screenshots or coordinate-only clicks.`;
+
+  try {
+    const compactEvents = events.slice(0, 350).map((event, index) => ({
+      step: index + 1,
+      kind: event.kind,
+      url: event.pageUrl,
+      title: event.pageTitle,
+      site: event.hostname,
+      target: event.target
+    }));
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        keep_alive: OLLAMA_KEEP_ALIVE,
+        stream: false,
+        think: elements.recordSkillThinkingSelect.value === "on",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content:
+              `Compile this local recording into one reusable skill.\n\nRecording log:\n${JSON.stringify(compactEvents, null, 2)}`
+          }
+        ]
+      })
+    });
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = (await response.json()).error || "";
+      } catch {
+        // The status is sufficient when Ollama does not return JSON.
+      }
+      throw new Error(`Ollama returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
+    }
+    const data = await response.json();
+    const markdown = stripSkillMarkdownFence(data.message?.content || "");
+    const candidate = BrowserChatSkills.parseMarkdown(markdown, { source: "local" });
+    const loaded = await BrowserChatSkills.load();
+    const nextSkill = BrowserChatSkills.normalizeSkill({
+      ...candidate,
+      id: undefined,
+      source: "local",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    await BrowserChatSkills.saveSkills([...loaded.skills, nextSkill]);
+    const doneState = {
+      ...skillRecordingState,
+      status: "done",
+      compiledAt: Date.now(),
+      compiledWith: { model, thinking: elements.recordSkillThinkingSelect.value === "on" },
+      createdSkill: nextSkill
+    };
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: doneState });
+    renderSkillRecorder(doneState);
+  } catch (error) {
+    const reviewState = { ...skillRecordingState, status: "review" };
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: reviewState });
+    renderSkillRecorder(reviewState);
+    elements.recordSkillCompileStatus.textContent =
+      error?.message || "Ollama could not compile this recording.";
+  } finally {
+    elements.compileSkillButton.disabled = false;
+  }
+}
+
+async function closeSkillRecorder({ openSettings = false } = {}) {
+  if (skillRecordingState?.status === "compiling") return;
+  if (
+    skillRecordingState?.status === "recording" &&
+    !window.confirm("Stop this recording and discard the captured actions?")
+  ) {
+    return;
+  }
+  if (skillRecordingState?.status === "recording") {
+    await chrome.runtime.sendMessage({ type: "browserchat.skillRecorder.stop" }).catch(() => {});
+    await removeTemporaryRecordingPermission();
+  }
+  await chrome.storage.local.remove(SKILL_RECORDING_STORAGE_KEY);
+  renderSkillRecorder(null);
+  if (openSettings) {
+    await chrome.tabs.create({ url: chrome.runtime.getURL("settings.html#skills") });
+  } else {
+    elements.input.focus();
+  }
+}
+
+elements.startSkillRecordingButton.addEventListener("click", () => void startSkillRecording());
+elements.stopSkillRecordingButton.addEventListener("click", () => void stopSkillRecording());
+elements.compileSkillButton.addEventListener("click", () => void compileRecordedSkill());
+elements.recordAgainButton.addEventListener("click", async () => {
+  const readyState = { status: "ready", events: [], requestedAt: Date.now() };
+  await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: readyState });
+  renderSkillRecorder(readyState);
+});
+elements.closeRecordSkillButton.addEventListener("click", () => void closeSkillRecorder());
+elements.finishRecordSkillButton.addEventListener("click", () => void closeSkillRecorder());
+elements.viewRecordedSkillButton.addEventListener("click", () =>
+  void closeSkillRecorder({ openSettings: true })
+);
+
 for (const suggestion of elements.suggestions) {
   suggestion.addEventListener("click", () => {
     setPromptText(suggestion.textContent);
@@ -10195,6 +10743,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   ) {
     void loadSkills();
   }
+  if (changes[SKILL_RECORDING_STORAGE_KEY]) {
+    renderSkillRecorder(changes[SKILL_RECORDING_STORAGE_KEY].newValue || null);
+  }
 });
 
 async function initializeApp() {
@@ -10202,6 +10753,7 @@ async function initializeApp() {
     initializeChats(),
     loadSystemPrompt(),
     loadSkills(),
+    loadSkillRecording(),
     BrowserChatRag.loadSettings()
   ]);
   await Promise.all([loadModels(), refreshSiteAccess()]);

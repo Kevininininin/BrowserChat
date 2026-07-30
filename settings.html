@@ -446,10 +446,32 @@ flowchart TD
             </div>
             <div class="skill-header-actions">
               <button id="importSkillButton" class="settings-secondary-button" type="button">Import Markdown</button>
-              <button id="createSkillButton" class="settings-primary-button" type="button">Create skill</button>
+              <button id="writeSkillButton" class="settings-secondary-button" type="button">Write manually</button>
+              <button id="createSkillButton" class="settings-primary-button create-skill-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="7"/>
+                  <circle cx="12" cy="12" r="2.5"/>
+                </svg>
+                <span>Create skill</span>
+              </button>
               <input id="importSkillInput" type="file" accept=".md,text/markdown,text/plain" multiple hidden />
             </div>
           </header>
+
+          <section class="record-skill-callout" aria-label="Create a skill by recording">
+            <div class="record-skill-callout-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M8 6.5h8M8 10.5h5M8 14.5h3"/>
+                <path d="M17 13v6M14 16h6"/>
+                <rect x="4" y="3" width="16" height="18" rx="4"/>
+              </svg>
+            </div>
+            <div>
+              <strong>Teach BrowserChat a workflow</strong>
+              <span>Record clicks and navigation as you complete a task. BrowserChat turns the action log into reusable instructions—no video or screenshots required.</span>
+            </div>
+            <button id="recordSkillCalloutButton" class="settings-secondary-button" type="button">Start from side panel</button>
+          </section>
 
           <section class="skills-master-card">
             <div>

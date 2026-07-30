@@ -392,7 +392,7 @@ BrowserChatTools.define((register) => {
       function: {
         name: "take_screenshot",
         description:
-          "Capture and compress the visible area of the active browser tab for visual inspection. Dense spatial pages may already include an automatic screenshot. Requires screenshot permission and a vision-capable model.",
+          "Primary visual state-discovery tool. Capture and compress the visible area of the active browser tab before falling back to observe_page when fresh visual evidence is needed. Requires screenshot permission and a vision-capable model.",
         parameters: {
           type: "object",
           properties: {}
