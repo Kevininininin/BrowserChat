@@ -31,6 +31,8 @@ test("side panel includes ready, recording, compilation, and success stages", ()
   }
   assert.match(html, /id="recordSkillModelSelect"/);
   assert.match(html, /id="recordSkillThinkingSelect"/);
+  assert.match(html, /id="recordSkillSuggestedTitle"[\s\S]*maxlength="120"/);
+  assert.match(html, /id="recordSkillSuggestedDescription"[\s\S]*maxlength="600"/);
   assert.match(html, /id="recordSkillDraftEditor"[\s\S]*readonly/);
   assert.match(html, /id="saveRecordedSkillButton"/);
   assert.match(html, /id="recordSkillEventList"[\s\S]*aria-live="polite"/);
@@ -61,4 +63,7 @@ test("compilation asks for reusable inputs, stable targets, and verification", (
   assert.match(source, /stream:\s*true/);
   assert.match(source, /status:\s*"editing"/);
   assert.match(source, /saveRecordedSkillDraft/);
+  assert.match(source, /User-provided intent \(optional suggestions/);
+  assert.match(source, /suggestedTitle/);
+  assert.match(source, /suggestedDescription/);
 });

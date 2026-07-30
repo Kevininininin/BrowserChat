@@ -194,6 +194,8 @@ const elements = {
   finishRecordSkillButton: document.querySelector("#finishRecordSkillButton"),
   viewRecordedSkillButton: document.querySelector("#viewRecordedSkillButton"),
   recordSkillReadyStatus: document.querySelector("#recordSkillReadyStatus"),
+  recordSkillSuggestedTitle: document.querySelector("#recordSkillSuggestedTitle"),
+  recordSkillSuggestedDescription: document.querySelector("#recordSkillSuggestedDescription"),
   recordSkillCompileStatus: document.querySelector("#recordSkillCompileStatus"),
   recordSkillTimer: document.querySelector("#recordSkillTimer"),
   recordSkillPageTitle: document.querySelector("#recordSkillPageTitle"),
@@ -10455,6 +10457,8 @@ function renderSkillRecorder(state = null) {
 
   if (normalizedStatus === "ready") {
     elements.recordSkillReadyStatus.textContent = "";
+    elements.recordSkillSuggestedTitle.value = state.suggestedTitle || "";
+    elements.recordSkillSuggestedDescription.value = state.suggestedDescription || "";
   }
   if (normalizedStatus === "recording") {
     const events = Array.isArray(state.events) ? state.events : [];
@@ -10524,6 +10528,8 @@ async function startSkillRecording() {
   elements.recordSkillReadyStatus.textContent = "Preparing page access…";
   let temporaryAllUrls = false;
   try {
+    const suggestedTitle = elements.recordSkillSuggestedTitle.value.trim();
+    const suggestedDescription = elements.recordSkillSuggestedDescription.value.trim();
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
       throw new Error("Open a regular website in the active tab, then try again.");
@@ -10542,6 +10548,8 @@ async function startSkillRecording() {
       windowId: tab.windowId,
       pageUrl: tab.url,
       pageTitle: tab.title || "",
+      suggestedTitle,
+      suggestedDescription,
       temporaryAllUrls
     });
     if (!response?.ok) throw new Error(response?.error || "Could not start recording.");
@@ -10634,6 +10642,10 @@ Do not require screenshots or coordinate-only clicks.`;
       site: event.hostname,
       target: event.target
     }));
+    const userIntent = {
+      suggestedTitle: skillRecordingState?.suggestedTitle || "",
+      suggestedDescription: skillRecordingState?.suggestedDescription || ""
+    };
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -10647,7 +10659,13 @@ Do not require screenshots or coordinate-only clicks.`;
           {
             role: "user",
             content:
-              `Compile this local recording into one reusable skill.\n\nRecording log:\n${JSON.stringify(compactEvents, null, 2)}`
+              `Compile this local recording into one reusable skill.
+
+User-provided intent (optional suggestions; use them to understand the goal, but improve or generalize them when the recording supports a more reusable skill):
+${JSON.stringify(userIntent, null, 2)}
+
+Recording log:
+${JSON.stringify(compactEvents, null, 2)}`
           }
         ]
       })
@@ -10773,7 +10791,13 @@ elements.backToSkillReviewButton.addEventListener("click", async () => {
   renderSkillRecorder(reviewState);
 });
 elements.recordAgainButton.addEventListener("click", async () => {
-  const readyState = { status: "ready", events: [], requestedAt: Date.now() };
+  const readyState = {
+    status: "ready",
+    events: [],
+    requestedAt: Date.now(),
+    suggestedTitle: skillRecordingState?.suggestedTitle || "",
+    suggestedDescription: skillRecordingState?.suggestedDescription || ""
+  };
   await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: readyState });
   renderSkillRecorder(readyState);
 });

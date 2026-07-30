@@ -299,6 +299,49 @@ select {
 .record-skill-text-button:hover { background: #ecece8; }
 .record-skill-status { min-height: 18px; margin: 10px 0 0 !important; color: #a23833 !important; font-size: 10px !important; text-align: center; }
 
+.record-skill-intent-card {
+  display: flex;
+  margin-bottom: 14px;
+  padding: 14px;
+  flex-direction: column;
+  gap: 11px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.record-skill-intent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.record-skill-intent-heading strong { font-size: 10px; }
+.record-skill-intent-heading > span {
+  color: #7658ab;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.record-skill-intent-card label { display: flex; flex-direction: column; gap: 5px; }
+.record-skill-intent-card label > span { color: #5d5d58; font-size: 9px; font-weight: 700; }
+.record-skill-intent-card input,
+.record-skill-intent-card textarea {
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.45;
+  background: #f8f8f5;
+  border: 1px solid #deded8;
+  border-radius: 9px;
+  outline: none;
+}
+.record-skill-intent-card textarea { min-height: 66px; resize: vertical; }
+.record-skill-intent-card input:focus,
+.record-skill-intent-card textarea:focus { border-color: #8b71bb; box-shadow: 0 0 0 2px rgb(118 88 171 / 12%); }
+
 .record-skill-recording-stage { padding: 26px 16px 16px; }
 .record-skill-recording-heading {
   display: flex;

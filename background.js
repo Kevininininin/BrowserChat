@@ -262,6 +262,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       startedAt: Date.now(),
       pageUrl: sanitizeRecordedUrl(message.pageUrl),
       pageTitle: String(message.pageTitle || ""),
+      suggestedTitle: String(message.suggestedTitle || "").trim().slice(0, 120),
+      suggestedDescription: String(message.suggestedDescription || "").trim().slice(0, 600),
       temporaryAllUrls: message.temporaryAllUrls === true,
       events: [
         sanitizeRecordedEvent({
