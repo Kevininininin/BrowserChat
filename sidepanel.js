@@ -695,6 +695,7 @@ function renderCurrentConversation() {
       executionTimeline: message.executionTimeline,
       objectivePlan: message.objectivePlan,
       initialThinking: message.initialThinking,
+      initialThinkingAt: message.initialThinkingAt,
       thinking: message.thinking,
       skillActivities: message.skillActivities,
       sourceReferences: message.sourceReferences,
@@ -709,7 +710,8 @@ function renderCurrentConversation() {
       createdAt: message.createdAt,
       startedAt: message.startedAt,
       finishReason: message.finishReason,
-      stoppedAt: message.stoppedAt
+      stoppedAt: message.stoppedAt,
+      finalResponseAt: message.finalResponseAt
     });
   }
 }
@@ -2058,7 +2060,33 @@ function setActivitySummary(summary, text, iconKind) {
   summary.append(icon, label);
 }
 
-function createActivityFinalStage({ streaming = false } = {}) {
+function formatActivityEventTime(timestamp) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function setActivityEventTime(container, timestamp) {
+  let time = container.querySelector(":scope > .activity-event-time");
+  if (!timestamp) {
+    time?.remove();
+    return;
+  }
+  if (!time) {
+    time = document.createElement("time");
+    time.className = "activity-event-time";
+    container.append(time);
+  }
+  time.dateTime = new Date(timestamp).toISOString();
+  time.textContent = formatActivityEventTime(timestamp);
+}
+
+function createActivityFinalStage({ streaming = false, timestamp = null } = {}) {
   const stage = document.createElement("div");
   stage.className = "activity-final-stage";
   stage.classList.toggle("streaming", streaming);
@@ -2071,6 +2099,7 @@ function createActivityFinalStage({ streaming = false } = {}) {
   const label = document.createElement("span");
   label.textContent = streaming ? "Writing final result…" : "Final result written";
   stage.append(icon, label);
+  setActivityEventTime(stage, timestamp);
   return { stage, label };
 }
 
@@ -2148,13 +2177,8 @@ function renderWorkflowEntry(workflowUI, entry = {}) {
     : isTool
     ? `${getToolActivityCopy(entry.name, entry.status)} · ${entry.name}`
     : ORCHESTRATION_PHASE_LABELS[entry.phase] || entry.phase || "Workflow event";
-  row.querySelector(".workflow-activity-time").textContent = entry.timestamp
-    ? new Date(entry.timestamp).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit"
-      })
-    : "";
+  row.querySelector(".workflow-activity-time").textContent =
+    formatActivityEventTime(entry.timestamp);
   row.querySelector(".workflow-activity-body").textContent = isPrompt
     ? entry.content || ""
     : JSON.stringify(
@@ -2511,6 +2535,7 @@ function createSkillUsagePanel(skills = []) {
       ? "Selected explicitly"
       : "Selected automatically";
     rowSummary.append(icon, name, source);
+    setActivityEventTime(rowSummary, skill.selectedAt || skill.timestamp);
 
     const body = document.createElement("div");
     body.className = "skill-usage-body";
@@ -2711,6 +2736,10 @@ function renderObjectiveEvaluation(toolUI, evaluation = {}) {
     ? "Final evaluation for this planned item"
     : "Evaluation after the latest tool";
   group.evaluationContent.textContent = evaluation.content;
+  setActivityEventTime(
+    group.evaluationSummary,
+    evaluation.timestamp || evaluation.createdAt
+  );
   group.evaluationContent.scrollTop = group.evaluationContent.scrollHeight;
 }
 
@@ -2763,6 +2792,8 @@ function renderToolActivity(toolUI, activity) {
 
     const toolName = document.createElement("code");
     toolName.className = "tool-activity-name";
+    const eventTime = document.createElement("time");
+    eventTime.className = "activity-event-time";
 
     const details = document.createElement("details");
     details.className = "tool-activity-details";
@@ -2798,7 +2829,7 @@ function renderToolActivity(toolUI, activity) {
     thinkingContent.className = "tool-step-thinking-content";
     thinking.append(thinkingSummary, thinkingContent);
 
-    header.append(indicator, label, toolName);
+    header.append(indicator, label, toolName, eventTime);
     row.append(header, details, thinking);
     ensureToolObjectiveGroup(toolUI, activity).activities.append(row);
     activityUI = {
@@ -2806,6 +2837,7 @@ function renderToolActivity(toolUI, activity) {
       row,
       label,
       toolName,
+      eventTime,
       body,
       imagePreview,
       image,
@@ -2832,6 +2864,7 @@ function renderToolActivity(toolUI, activity) {
     ? "Waiting for your approval"
     : getToolActivityCopy(activity.name, activity.status);
   activityUI.toolName.textContent = activity.name;
+  setActivityEventTime(activityUI.row.querySelector(".tool-activity-header"), activity.startedAt);
 
   const sections = [`Input\n${formatToolActivityValue(activity.arguments)}`];
   if (activity.result !== undefined) {
@@ -2858,6 +2891,10 @@ function renderToolActivity(toolUI, activity) {
     setActivitySummary(activityUI.thinkingSummary, activity.thinkingStreaming
       ? "Thinking after this tool…"
       : "Thought process after this tool", "thinking");
+    setActivityEventTime(
+      activityUI.thinkingSummary,
+      activity.thinkingStartedAt || activity.finishedAt || activity.startedAt
+    );
     activityUI.thinkingContent.textContent = activity.thinkingAfter;
     activityUI.thinkingContent.scrollTop =
       activityUI.thinkingContent.scrollHeight;
@@ -2886,7 +2923,10 @@ function appendStoredToolActivities(contentWrap, activities = [], evaluations = 
       thinkingStreaming: false,
       objectiveId: activity.objectiveId,
       objectiveDescription: activity.objectiveDescription,
-      objectiveSequence: activity.objectiveSequence
+      objectiveSequence: activity.objectiveSequence,
+      startedAt: activity.startedAt,
+      finishedAt: activity.finishedAt,
+      thinkingStartedAt: activity.thinkingStartedAt
     });
   }
   for (const evaluation of evaluations) {
@@ -2898,7 +2938,12 @@ function appendStoredToolActivities(contentWrap, activities = [], evaluations = 
   if (activities.length > 1) toolUI.panel.open = false;
 }
 
-function appendStoredThinking(contentWrap, thinking, hasTools = false) {
+function appendStoredThinking(
+  contentWrap,
+  thinking,
+  hasTools = false,
+  timestamp = null
+) {
   if (!thinking) return;
   const panel = document.createElement("details");
   panel.className = "thinking-panel";
@@ -2907,6 +2952,7 @@ function appendStoredThinking(contentWrap, thinking, hasTools = false) {
   setActivitySummary(summary, hasTools
     ? "Thought process before first tool"
     : "Thought process", "thinking");
+  setActivityEventTime(summary, timestamp);
   const content = document.createElement("div");
   content.className = "thinking-content";
   content.textContent = thinking;
@@ -2928,6 +2974,15 @@ function buildUnifiedActivityTimeline(content, options = {}) {
           !["id", "kind", "timestamp", "source", "content"].includes(key)
         )
       )
+    });
+  }
+  for (const skill of options.skillActivities || []) {
+    add({
+      timestamp: skill.selectedAt || skill.timestamp || null,
+      type: "skill_selection",
+      skillId: skill.id || null,
+      skill: skill.name || "Untitled skill",
+      selectionSource: skill.selectionSource || null
     });
   }
   for (const event of options.orchestrationTrace?.events || []) {
@@ -2957,10 +3012,35 @@ function buildUnifiedActivityTimeline(content, options = {}) {
       thinkingAfter: activity.thinkingAfter || "",
       evaluationAfter: activity.evaluationAfter || ""
     });
+    if (activity.thinkingAfter) {
+      add({
+        timestamp:
+          activity.thinkingStartedAt ||
+          activity.finishedAt ||
+          activity.startedAt ||
+          null,
+        type: "model_thinking",
+        phase: "after_tool",
+        toolCallId: activity.id || null,
+        content: activity.thinkingAfter
+      });
+    }
+  }
+  for (const evaluation of options.stepEvaluations || []) {
+    add({
+      timestamp: evaluation.timestamp || evaluation.createdAt || null,
+      type: "planned_item_evaluation",
+      objectiveId: evaluation.objectiveId || null,
+      objectiveSequence: evaluation.objectiveSequence || null,
+      terminal: Boolean(evaluation.terminal),
+      content: evaluation.content || ""
+    });
   }
   if (options.initialThinking) {
     add({
-      timestamp: options.startedAt
+      timestamp: options.initialThinkingAt
+        ? new Date(options.initialThinkingAt).toISOString()
+        : options.startedAt
         ? new Date(options.startedAt).toISOString()
         : null,
       type: "model_thinking",
@@ -2969,7 +3049,9 @@ function buildUnifiedActivityTimeline(content, options = {}) {
     });
   }
   add({
-    timestamp: options.stoppedAt
+    timestamp: options.finalResponseAt
+      ? new Date(options.finalResponseAt).toISOString()
+      : options.stoppedAt
       ? new Date(options.stoppedAt).toISOString()
       : options.createdAt
       ? new Date(options.createdAt).toISOString()
@@ -3015,6 +3097,7 @@ function buildResponseTrace(content, options = {}) {
       name: skill.name,
       description: skill.description,
       selectionSource: skill.selectionSource,
+      selectedAt: skill.selectedAt || null,
       injectedInstructions: skill.instructions
     })),
     reasoning: {
@@ -3041,6 +3124,7 @@ function buildResponseTrace(content, options = {}) {
       result: activity.result ?? null,
       approval: activity.approval || null,
       thinkingAfter: activity.thinkingAfter || "",
+      thinkingStartedAt: activity.thinkingStartedAt || null,
       evaluationAfter: activity.evaluationAfter || ""
     })),
     retrievedSources: options.sourceReferences || [],
@@ -3347,7 +3431,8 @@ function appendMessage(role, content = "", options = {}) {
     appendStoredThinking(
       activityStack?.body || contentWrap,
       options.initialThinking,
-      Boolean(options.toolActivities?.length)
+      Boolean(options.toolActivities?.length),
+      options.initialThinkingAt || options.startedAt || options.createdAt || null
     );
     appendStoredToolActivities(
       activityStack?.body || contentWrap,
@@ -3355,7 +3440,13 @@ function appendMessage(role, content = "", options = {}) {
       options.stepEvaluations
     );
     if (activityStack && String(content || "").trim()) {
-      activityStack.body.append(createActivityFinalStage().stage);
+      activityStack.body.append(createActivityFinalStage({
+        timestamp:
+          options.finalResponseAt ||
+          options.stoppedAt ||
+          options.createdAt ||
+          null
+      }).stage);
     }
   }
 
@@ -3699,6 +3790,7 @@ function appendAssistantMessage({
 
   const thinkingSummary = document.createElement("summary");
   setActivitySummary(thinkingSummary, "Thinking…", "thinking");
+  setActivityEventTime(thinkingSummary, activityStack.stack.dataset.startedAt);
 
   const thinkingContent = document.createElement("div");
   thinkingContent.className = "thinking-content";
@@ -7295,6 +7387,7 @@ async function runToolCallingLoop(
   const streamRoundThinking = (thinking) => {
     const owner = toolActivities.at(-1) || null;
     if (owner) {
+      owner.thinkingStartedAt ||= new Date().toISOString();
       owner.thinkingAfter = thinking;
       owner.thinkingStreaming = true;
     } else {
@@ -7506,6 +7599,7 @@ async function runToolCallingLoop(
               ...(toolActivities.at(-1) || getObjectiveContext(objectivePlan)),
               content,
               thinking,
+              timestamp: new Date().toISOString(),
               streaming: true
             });
             return;
@@ -7578,6 +7672,7 @@ async function runToolCallingLoop(
           const evaluation = {
             ...evaluationContext,
             content: response.message.content,
+            timestamp: new Date().toISOString(),
             terminal: false
           };
           stepEvaluations.push(evaluation);
@@ -7615,6 +7710,7 @@ async function runToolCallingLoop(
           const evaluation = {
             ...evaluationContext,
             content: response.message.content,
+            timestamp: new Date().toISOString(),
             terminal: true
           };
           stepEvaluations.push(evaluation);
@@ -7677,6 +7773,7 @@ async function runToolCallingLoop(
       const evaluation = {
         ...evaluationContext,
         content: response.message.content,
+        timestamp: new Date().toISOString(),
         terminal: false
       };
       stepEvaluations.push(evaluation);
@@ -8161,6 +8258,8 @@ async function submitPrompt(prompt) {
     content: "",
     thinking: "",
     initialThinking: "",
+    initialThinkingAt: null,
+    finalResponseAt: null,
     cursorLatestThinking: "",
     toolActivities: new Map(),
     stepEvaluations: [],
@@ -8226,12 +8325,14 @@ async function submitPrompt(prompt) {
       controller.signal,
       requestedSkillIds
     );
+    const skillsSelectedAt = new Date().toISOString();
     skillActivities = selectedSkills.map((skill) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
       instructions: skill.instructions,
-      selectionSource: requestedSkillIds.includes(skill.id) ? "explicit" : "automatic"
+      selectionSource: requestedSkillIds.includes(skill.id) ? "explicit" : "automatic",
+      selectedAt: skillsSelectedAt
     }));
     assistantUI.showSkills(skillActivities);
     const usesComputerControl = selectedSkills.some(
@@ -8315,6 +8416,9 @@ async function submitPrompt(prompt) {
         partialResponse.thinking = thinking;
         if (roundThinking) partialResponse.cursorLatestThinking = roundThinking;
         if (!activity) partialResponse.initialThinking = roundThinking;
+        if (!activity && !partialResponse.initialThinkingAt) {
+          partialResponse.initialThinkingAt = Date.now();
+        }
         if (activity?.id) {
           partialResponse.toolActivities.set(activity.id, { ...activity });
           void updateBrowserControlIndicator(
@@ -8357,6 +8461,11 @@ async function submitPrompt(prompt) {
         assistantUI.finalStage.hidden = false;
         if (!assistantUI.answerStarted) {
           assistantUI.answerStarted = true;
+          partialResponse.finalResponseAt = Date.now();
+          setActivityEventTime(
+            assistantUI.finalStage,
+            partialResponse.finalResponseAt
+          );
           assistantUI.thinkingPanel.classList.remove("streaming");
           if (assistantUI.hasThinking) {
             if (!assistantUI.toolUI.activities.size) {
@@ -8516,6 +8625,12 @@ async function submitPrompt(prompt) {
       ...(answer.initialThinking
         ? { initialThinking: answer.initialThinking }
         : {}),
+      ...(partialResponse.initialThinkingAt
+        ? { initialThinkingAt: partialResponse.initialThinkingAt }
+        : {}),
+      ...(partialResponse.finalResponseAt
+        ? { finalResponseAt: partialResponse.finalResponseAt }
+        : {}),
       ...(answer.toolActivities?.length
         ? { toolActivities: answer.toolActivities }
         : {}),
@@ -8623,6 +8738,12 @@ async function submitPrompt(prompt) {
           : {}),
         ...(partialResponse.initialThinking
           ? { initialThinking: partialResponse.initialThinking }
+          : {}),
+        ...(partialResponse.initialThinkingAt
+          ? { initialThinkingAt: partialResponse.initialThinkingAt }
+          : {}),
+        ...(partialResponse.finalResponseAt
+          ? { finalResponseAt: partialResponse.finalResponseAt }
           : {}),
         ...(toolActivities.length ? { toolActivities } : {}),
         ...(stepEvaluations.length ? { stepEvaluations } : {}),

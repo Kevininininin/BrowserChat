@@ -4524,6 +4524,10 @@ select {
   display: none;
 }
 
+.assistant-activity-stack .activity-event-time {
+  display: none;
+}
+
 /* Match the indented timeline hierarchy used by skills and tool activity. */
 .activity-dialog-timeline .workflow-activity-panel {
   margin: 0;
@@ -4588,4 +4592,27 @@ select {
   background: #f6f6f4;
   border-radius: 9px;
   font-size: 10px;
+}
+
+.activity-dialog-timeline .activity-event-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 12px;
+  color: #92928d;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.activity-dialog-timeline .tool-activity-header,
+.activity-dialog-timeline .activity-final-stage {
+  width: 100%;
+}
+
+.activity-dialog-timeline .skill-usage-row > summary,
+.activity-dialog-timeline .tool-objective-evaluation > summary,
+.activity-dialog-timeline .tool-step-thinking > summary {
+  display: flex;
+  align-items: center;
 }
