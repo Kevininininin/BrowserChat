@@ -3621,7 +3621,7 @@ select {
 }
 
 .assistant-activity-stack:has(.assistant-activity-body:empty),
-.assistant-activity-stack:has(.skill-usage-slot:empty):not(:has(.thinking-panel:not([hidden]), .tool-activity-panel:not([hidden]))) {
+.assistant-activity-stack:has(.skill-usage-slot:empty):not(:has(.workflow-activity-panel:not([hidden]), .thinking-panel:not([hidden]), .tool-activity-panel:not([hidden]))) {
   display: none;
 }
 
@@ -4499,4 +4499,93 @@ select {
   color: transparent;
   background-clip: text;
   animation: activityShimmer 1.8s linear infinite;
+}
+
+/* Orchestration is one compact activity item in chat. Its steps live in Activity. */
+.assistant-activity-stack .workflow-activity-panel {
+  margin: 0;
+  color: #777773;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.assistant-activity-stack .workflow-activity-panel > summary {
+  min-height: 28px;
+  padding: 3px 4px;
+  gap: 7px;
+  color: #777773;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.assistant-activity-stack .workflow-activity-panel > summary::after,
+.assistant-activity-stack .workflow-activity-list {
+  display: none;
+}
+
+/* Match the indented timeline hierarchy used by skills and tool activity. */
+.activity-dialog-timeline .workflow-activity-panel {
+  margin: 0;
+  color: #292927;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.activity-dialog-timeline .workflow-activity-panel > summary {
+  min-height: auto;
+  padding: 0 0 10px;
+  gap: 7px;
+  color: #292927;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.activity-dialog-timeline .workflow-activity-list {
+  display: grid;
+  position: relative;
+  margin-left: 8px;
+  padding: 0 0 0 18px;
+  gap: 0;
+  border-left: 1px solid #deded9;
+}
+
+.activity-dialog-timeline .workflow-activity-row {
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.activity-dialog-timeline .workflow-activity-row > summary {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  min-height: 30px;
+  padding: 5px 0;
+  gap: 7px;
+  color: #5f5f5a;
+  font-size: 12px;
+}
+
+.activity-dialog-timeline .workflow-activity-label {
+  font-weight: 550;
+}
+
+.activity-dialog-timeline .workflow-activity-time {
+  padding-right: 2px;
+  color: #92928d;
+  font-size: 10px;
+}
+
+.activity-dialog-timeline .workflow-activity-body {
+  width: 100%;
+  max-height: 220px;
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  overflow: auto;
+  color: #5c5c57;
+  background: #f6f6f4;
+  border-radius: 9px;
+  font-size: 10px;
 }

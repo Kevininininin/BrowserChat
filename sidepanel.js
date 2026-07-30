@@ -2093,10 +2093,11 @@ const ORCHESTRATION_PHASE_LABELS = Object.freeze({
 function createWorkflowActivityPanel() {
   const panel = document.createElement("details");
   panel.className = "workflow-activity-panel";
+  panel.dataset.activityKey = "orchestration-flow";
   panel.open = true;
   panel.hidden = true;
   const summary = document.createElement("summary");
-  setActivitySummary(summary, "Orchestration flow", "tools");
+  setActivitySummary(summary, "orchestration flow", "edit");
   const list = document.createElement("div");
   list.className = "workflow-activity-list";
   panel.append(summary, list);
