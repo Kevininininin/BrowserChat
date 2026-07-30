@@ -119,9 +119,10 @@
           </div>
 
           <div class="architecture-notes">
-            <article><strong>Skills are selective</strong><span>When enabled, only selected skill instructions expand the effective system prompt.</span></article>
-            <article><strong>Tools stay local</strong><span>BrowserChat executes registered functions inside the extension.</span></article>
-            <article><strong>Objectives guide actions</strong><span>Browser tasks are planned into verified steps; controls are ranked for the active objective and bounded recovery can trigger replanning.</span></article>
+            <article><strong>Every browser task gets a strategy</strong><span>Simple goals use a lightweight plan; more complex goals receive additional verified objectives.</span></article>
+            <article><strong>Safety is runtime-enforced</strong><span>Tool validation and consequential-action approval cannot be disabled by editing the system prompt.</span></article>
+            <article><strong>Every action is re-observed</strong><span>BrowserChat captures the resulting state before deterministic predicates and the model evaluates progress.</span></article>
+            <article><strong>Evidence closes the loop</strong><span>Completion, replanning, and blockers are recorded in the downloadable response trace.</span></article>
           </div>
         </section>
 
@@ -733,7 +734,7 @@ flowchart TD
                 </label>
                 <label>
                   <span class="prompt-field-title">Tool behavior</span>
-                  <span class="prompt-field-description">Sent on every message. It explains objective execution, targeted control lookup, action-effect verification, safe search submission, and snapshot-search boundaries.</span>
+                  <span class="prompt-field-description">Sent on every message. It describes the model’s role in the orchestration loop. Runtime validation, one-action execution, password blocking, and consequential-action approval remain enforced even if this text is customized.</span>
                   <textarea data-prompt-key="toolInstruction" rows="8"></textarea>
                 </label>
                 <label>

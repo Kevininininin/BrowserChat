@@ -45,6 +45,25 @@ BrowserChatTools.define((register) => {
     schema: {
       type: "function",
       function: {
+        name: "go_back",
+        description:
+          "Navigate the controlled tab back one browser-history entry, then return a fresh page observation. Use this to return from a detail view to the list or board that opened it.",
+        parameters: {
+          type: "object",
+          properties: {}
+        }
+      }
+    },
+    execute(_arguments, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().goBack(_arguments, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
         name: "get_current_website",
         description:
           "Return the URL and tab title of the website currently active in the browser. Use this to re-check where you are operating without capturing the page.",

@@ -236,26 +236,41 @@ attached only when the skill is explicitly or automatically selected.
 ## Tools
 
 BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
-`get_current_website`, `observe_page`, `find_interactive_elements`, `search_captured_page_text`,
+`get_current_website`, `go_back`, `observe_page`, `find_interactive_elements`, `search_captured_page_text`,
 `fill_field`, `click_element`, `select_option`, `scroll_page`,
 `take_screenshot`, and `wait_for_page`.
 Browser actions use short-lived element references from the latest compact
-observation and execute sequentially. `fill_field` can safely submit recognized
+observation and execute one action per orchestration cycle. Browser-control
+requests receive a validated strategy—even for a single lightweight action—and
+begin with an automatic observation before the model chooses an action.
+`fill_field` can safely submit recognized
 search fields and return the resulting observation. Clicks report navigation,
 control-state, or DOM effects and include a post-click observation. Browser
 tasks receive a structured objective plan with deterministic URL and control
-predicates, bounded retries, and conditional replanning. The current plan is
+predicates, bounded retries, schema validation before execution, a resulting-state
+observation after every mutating browser action, and conditional replanning.
+Consequential actions pause in the existing activity panel for an explicit
+one-time approval. The current plan is
 shown above the conversation with completed, active, pending, blocked, and
 red struck-through revised states. A replanned step remains visible immediately
 before its replacement so the user can follow the revision history. Long page text is retrieved
 lazily from the latest captured snapshot through the configured local RAG
 settings; this snapshot search never performs a website search or navigation.
 Superseded tool payloads and screenshot images are compacted between model
-rounds. Password fields and consequential submit-like controls are blocked.
+rounds. Password fields remain blocked.
+
+The Activity surface mirrors the chronological orchestration thread, including
+normalized policy, complete system-message injections, strategy changes, model
+evaluations, validation and consequence checks, approvals, tools, observations,
+verification, and terminal evidence. Response-log downloads use
+`browserchat.response-trace.v3` and include the same data in an aligned
+`activityTimeline`.
 
 Tools are organized by responsibility:
 
 ```text
+orchestration/
+└── runtime.js
 tools/
 ├── registry.js
 ├── calculator.js
@@ -264,6 +279,8 @@ tools/
 └── index.js
 ```
 
+`orchestration/runtime.js` owns goal normalization, strategy and argument
+validation, action risk classification, lifecycle phases, and trace events.
 `registry.js` owns discovery and dispatch, each tool module defines its schemas
 and implementations, and `index.js` initializes all modules after they load.
 Add a tool with `BrowserChatTools.define((register) => register({ schema,

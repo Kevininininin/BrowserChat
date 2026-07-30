@@ -411,86 +411,69 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 
 const ARCHITECTURE_WITH_SKILLS = `
 flowchart TD
-    U["Files attached or dropped"] --> V["Extract, chunk, and embed asynchronously"]
-    V --> DB[("Store chat-scoped vectors in IndexedDB")]
-    A["User submits a prompt"] --> W["Await attached-file indexing"]
-    W --> C{"DOM context attached?"}
-    C -- Yes --> D["Capture the active page"]
-    C -- No --> R{"Is RAG enabled?"}
-    D --> R
-    R -- Yes --> X["Index captured DOM, then retrieve relevant chunks"]
-    DB --> X
-    R -- No --> Y["Keep full captured DOM, if any"]
-    X --> S["Ollama selects relevant skills from the user prompt"]
-    Y --> S
-    S --> E{"Were any skills selected?"}
-    E -- No --> H["Use base system prompt"]
-    E -- Yes --> F["Load selected skill instructions"]
-    F --> G["Compose effective system prompt"]
-    G --> H
-    H --> OP["Create structured objective plan for browser tasks"]
-    OP --> B["Build system, history, context, and user messages"]
-    B --> I["Attach registered tool schemas"]
-    I --> J["Send messages and tools to Ollama"]
-    J --> K{"Did Ollama request tools?"}
-    K -- No --> L["Display and save answer and source references"]
-    K -- Yes --> M["Look up each tool by name"]
-    M --> P{"Is the tool registered?"}
-    P -- No --> Q["Record unsupported tool request"]
-    Q --> O
-    P -- Yes --> N["Execute tool function"]
-    N --> EV{"Active objective predicates satisfied?"}
-    EV -- Yes --> AV["Record evidence and activate next objective"]
-    EV -- No --> RB{"Retry budget exhausted?"}
-    RB -- Yes --> RP["Replan remaining objectives or mark blocked"]
-    RB -- No --> O
-    AV --> O["Append role: tool result messages"]
-    RP --> O
-    O --> J
+    A["Receive user goal"] --> B["Normalize goal and runtime safety policy"]
+    B --> SK["Select and compose relevant skill instructions"]
+    SK --> C["Create lightweight task strategy"]
+    C --> D["Observe current browser state"]
+    D --> E["Model chooses one next action"]
+    E --> V["Validate tool name and arguments"]
+    V --> F{"Consequential action?"}
+    F -- "Yes" --> G["Pause for one-time user approval"]
+    G --> H{"Approved?"}
+    H -- "Yes" --> X["Execute one action"]
+    H -- "No" --> N["Report blocker with completed evidence"]
+    F -- "No" --> X
+    X --> I["Observe resulting browser state"]
+    I --> J["Deterministic predicate verification"]
+    J --> K["Model evaluates result and evidence"]
+    K --> L{"Goal state?"}
+    L -- "Complete" --> M["Produce final answer and evidence trace"]
+    L -- "Progressing" --> E
+    L -- "Strategy invalid" --> C
+    L -- "Blocked" --> N
 
     classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
     classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
     classDef skill fill:#eaf1fb,stroke:#89a9cf,color:#315b87
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class U,A,W,D input
-    class S,F,G,OP skill
-    class C,R,E,H,B,I,J,K,P,EV,RB model
-    class V,DB,X,Y,M,N,O,Q,AV,RP tool
-    class L output
+    class A input
+    class SK skill
+    class E,K,L model
+    class B,C,D,V,F,G,H,X,I,J tool
+    class M,N output
 `;
 
 const ARCHITECTURE_WITHOUT_SKILLS = `
 flowchart TD
-    U["Files attached or dropped"] --> V["Extract, chunk, and embed asynchronously"]
-    V --> DB[("Store chat-scoped vectors in IndexedDB")]
-    A["User submits a prompt"] --> W["Await attached-file indexing"]
-    W --> C{"DOM context attached?"}
-    C -- Yes --> P["Capture the active page"]
-    C -- No --> R{"Is RAG enabled?"}
-    P --> R
-    R -- Yes --> X["Index captured DOM, then retrieve relevant chunks"]
-    DB --> X
-    R -- No --> Y["Keep full captured DOM, if any"]
-    X --> B["Build system, history, context, and user messages"]
-    Y --> B
-    B --> T["Attach registered tool schemas"]
-    T --> D["Send messages and tools to Ollama"]
-    D --> E{"Did Ollama request tools?"}
-    E -- No --> F["Display and save answer and source references"]
-    E -- Yes --> G["Look up each tool by name"]
-    G --> H["Execute registered tool or record unsupported request"]
-    H --> I["Append role: tool result messages"]
-    I --> D
+    A["Receive user goal"] --> B["Normalize goal and runtime safety policy"]
+    B --> C["Create lightweight task strategy"]
+    C --> D["Observe current browser state"]
+    D --> E["Model chooses one next action"]
+    E --> V["Validate tool name and arguments"]
+    V --> F{"Consequential action?"}
+    F -- "Yes" --> G["Pause for one-time user approval"]
+    G --> H{"Approved?"}
+    H -- "Yes" --> X["Execute one action"]
+    H -- "No" --> N["Report blocker with completed evidence"]
+    F -- "No" --> X
+    X --> I["Observe resulting browser state"]
+    I --> J["Deterministic predicate verification"]
+    J --> K["Model evaluates result and evidence"]
+    K --> L{"Goal state?"}
+    L -- "Complete" --> M["Produce final answer and evidence trace"]
+    L -- "Progressing" --> E
+    L -- "Strategy invalid" --> C
+    L -- "Blocked" --> N
 
     classDef input fill:#f0f0ed,stroke:#aaa9a4,color:#292927
     classDef model fill:#f0ecf9,stroke:#a996d3,color:#4f3d7d
     classDef tool fill:#fff4e7,stroke:#d9ac76,color:#7d4e19
     classDef output fill:#eaf6ee,stroke:#87bd98,color:#286c40
-    class U,A,W,P input
-    class C,R,B,T,D,E model
-    class V,DB,X,Y,G,H,I tool
-    class F output
+    class A input
+    class E,K,L model
+    class B,C,D,V,F,G,H,X,I,J tool
+    class M,N output
 `;
 
 async function renderRuntimeArchitecture() {

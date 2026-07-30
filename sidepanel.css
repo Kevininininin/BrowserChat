@@ -868,6 +868,119 @@ select {
   transition: transform 140ms ease;
 }
 
+.workflow-activity-panel {
+  margin: 0 0 13px;
+  color: #555550;
+  background: #f1f1ee;
+  border: 1px solid #e2e2dd;
+  border-radius: 12px;
+}
+
+.workflow-activity-panel[hidden] {
+  display: none;
+}
+
+.workflow-activity-panel > summary {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 11px;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 620;
+  list-style: none;
+  cursor: pointer;
+}
+
+.workflow-activity-panel > summary::-webkit-details-marker,
+.workflow-activity-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.workflow-activity-panel > summary::after {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  content: "";
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.workflow-activity-panel[open] > summary::after {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.workflow-activity-list {
+  display: grid;
+  padding: 0 11px 10px;
+  gap: 6px;
+}
+
+.workflow-activity-row {
+  overflow: hidden;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid #e1e1dc;
+  border-radius: 9px;
+}
+
+.workflow-activity-row > summary {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 8px 9px;
+  gap: 7px;
+  font-size: 11px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.workflow-activity-indicator {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: #666661;
+}
+
+.workflow-activity-indicator svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.workflow-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-activity-time {
+  color: #898984;
+  font-size: 9px;
+}
+
+.workflow-activity-body {
+  max-height: 280px;
+  margin: 0;
+  padding: 0 9px 9px 34px;
+  overflow: auto;
+  color: #5c5c57;
+  font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workflow-activity-row[data-kind="system-prompt"] {
+  border-left: 3px solid #89a9cf;
+}
+
 .skill-usage-panel[open] > summary::after {
   transform: rotate(225deg) translate(-1px, -1px);
 }
@@ -1082,6 +1195,61 @@ select {
 
 .tool-activity-actions[hidden] {
   display: none;
+}
+
+.tool-approval-panel {
+  margin-bottom: 8px;
+  padding: 9px 10px;
+  background: #fffaf0;
+  border: 1px solid #dfc88d;
+  border-radius: 9px;
+}
+
+.tool-approval-panel[hidden] {
+  display: none;
+}
+
+.tool-approval-copy {
+  display: grid;
+  gap: 3px;
+  color: #51462d;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tool-approval-copy strong {
+  color: #27241c;
+  font-size: 12px;
+}
+
+.tool-approval-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.tool-approval-buttons button {
+  padding: 6px 9px;
+  color: #4f4f4b;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  background: #fff;
+  border: 1px solid #d5d5cf;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tool-approval-approve {
+  color: #fff !important;
+  background: #343431 !important;
+  border-color: #343431 !important;
+}
+
+.tool-approval-buttons button:focus-visible {
+  outline: 2px solid #4c9a67;
+  outline-offset: 2px;
 }
 
 .tool-answer-now-button {
