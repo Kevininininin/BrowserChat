@@ -15,10 +15,8 @@
     BLOCKED: "blocked"
   });
 
-  const CONSEQUENTIAL_LABEL =
-    /\b(?:apply|buy|checkout|confirm|delete|finish|order|pay|place order|post|purchase|remove|send|submit|unsubscribe)\b/i;
-  const SAFE_SEARCH_LABEL = /\b(?:find|query|search)\b/i;
   const STATE_CHANGING_TOOL_NAMES = new Set([
+    "navigate_to_url",
     "find_and_click",
     "fill_field",
     "press_key",
@@ -124,58 +122,19 @@
     observationState,
     safetyPolicy = DEFAULT_SAFETY_POLICY
   ) {
-    const policy = normalizeSafetyPolicy(safetyPolicy);
+    void observationState;
+    void safetyPolicy;
     const name = call?.function?.name || "";
     const arguments_ = call?.function?.arguments || {};
-    const element = getObservedElement(call, observationState);
-    const label = [
-      arguments_.query,
-      element?.label,
-      element?.name
-    ].filter(Boolean).join(" ");
 
-    if (name === "fill_field" && arguments_.submit === true) {
-      const searchEvidence = [label, element?.kind, element?.inputType]
-        .filter(Boolean)
-        .join(" ");
-      if (
-        !policy.allowRecognizedSearchSubmission ||
-        !SAFE_SEARCH_LABEL.test(searchEvidence)
-      ) {
-        return {
-          consequential: true,
-          category: "form_submission",
-          reason: "This action submits a form and may create an external side effect.",
-          summary: `Submit the form after filling “${element?.label || arguments_.elementRef || "a field"}”`
-        };
-      }
-    }
-    if (name === "press_key" && arguments_.key === "Enter") {
-      const searchEvidence = [label, element?.kind, element?.inputType]
-        .filter(Boolean)
-        .join(" ");
-      if (
-        !policy.allowRecognizedSearchSubmission ||
-        !SAFE_SEARCH_LABEL.test(searchEvidence)
-      ) {
-        return {
-          consequential: true,
-          category: "form_submission",
-          reason: "Pressing Enter here may submit a form or confirm a choice.",
-          summary: `Press Enter on “${element?.label || arguments_.elementRef || "a control"}”`
-        };
-      }
-    }
-    if (
-      policy.requireApprovalForConsequentialActions &&
-      ["click_element", "find_and_click"].includes(name) &&
-      CONSEQUENTIAL_LABEL.test(label)
-    ) {
+    if (name === "navigate_to_url") {
+      const destination = String(arguments_.url || "").trim();
       return {
         consequential: true,
-        category: "consequential_click",
-        reason: "The control label indicates a potentially consequential external action.",
-        summary: `Click “${label.trim() || "the consequential control"}”`
+        category: "open_external_url",
+        reason:
+          "Opening a URL creates a new browser tab and requires explicit user approval.",
+        summary: `Open ${destination || "the requested URL"} in a new tab`
       };
     }
     return {
@@ -226,8 +185,8 @@
     const description = String(objective?.description || "").toLocaleLowerCase();
     const requirements = [
       {
-        pattern: /\b(?:click|open|visit)\b/,
-        tools: new Set(["click_element", "find_and_click"])
+        pattern: /\b(?:click|open|visit|navigate)\b/,
+        tools: new Set(["navigate_to_url", "click_element", "find_and_click"])
       },
       {
         pattern: /\b(?:fill|enter|type)\b/,
@@ -250,6 +209,72 @@
       requirement.tools.has(activityName) &&
       meaningfulProgress
     );
+  }
+
+  function normalizeComparableText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  }
+
+  function matchesExpectedState(expectedState, observation) {
+    const type = expectedState?.type;
+    const value = normalizeComparableText(expectedState?.value);
+    if (!type || !value || !observation) return false;
+    const pageText = normalizeComparableText([
+      observation.visibleText?.inViewport,
+      observation.visibleText?.elsewhereOnPage
+    ].filter(Boolean).join(" "));
+    const controls = observation.interactiveElements || [];
+    const matchingControls = controls.filter((element) =>
+      normalizeComparableText([
+        element.label,
+        element.name,
+        element.placeholder
+      ].filter(Boolean).join(" ")).includes(value)
+    );
+    switch (type) {
+      case "page_text_contains":
+        return pageText.includes(value);
+      case "control_present":
+        return matchingControls.length > 0;
+      case "control_absent":
+        return matchingControls.length === 0;
+      case "url_contains":
+        return normalizeComparableText(observation.page?.url).includes(value);
+      case "control_checked":
+        return matchingControls.some((element) =>
+          element.checked === true || element.checked === "true"
+        );
+      case "control_unchecked":
+        return matchingControls.some((element) =>
+          element.checked === false || element.checked === "false"
+        );
+      default:
+        return false;
+    }
+  }
+
+  function verifyExpectedState(expectedState, observation, previousObservation = null) {
+    const type = expectedState?.type;
+    const value = normalizeComparableText(expectedState?.value);
+    if (!type || !value || !observation) {
+      return {
+        verified: false,
+        reason: "The click did not provide a verifiable expected state."
+      };
+    }
+    const matchesAfter = matchesExpectedState(expectedState, observation);
+    const matchedBefore = previousObservation
+      ? matchesExpectedState(expectedState, previousObservation)
+      : false;
+    const verified = matchesAfter && !matchedBefore;
+    return {
+      verified,
+      reason: verified
+        ? "The declared post-click state became true after the click."
+        : matchedBefore
+          ? `The declared state was already true before the click and does not prove a transition: ${type} “${expectedState.value}”.`
+          : `The declared post-click state was not observed: ${type} “${expectedState.value}”.`
+    };
   }
 
   function validateStrategy(plan) {
@@ -280,14 +305,60 @@
         errors.push(`${label} needs deterministic completion predicates.`);
       } else {
         for (const predicate of objective?.predicates || []) {
-          const hasTarget = String(
-            predicate?.type?.startsWith("control_")
-              ? predicate.query || ""
-              : predicate.value || ""
-          ).trim();
+          const countPredicate = [
+            "evidence_count_at_least",
+            "distinct_url_count_at_least"
+          ].includes(predicate?.type);
+          const target = predicate?.type?.startsWith("control_")
+            ? predicate.query
+            : predicate.value;
+          const hasTarget = countPredicate
+            ? Number.isInteger(target) && target > 0
+            : Boolean(String(target || "").trim());
           if (!hasTarget) {
             errors.push(`${label} has a completion predicate without a target.`);
           }
+        }
+        const description = normalizeGoal(objective?.description);
+        const requiresCountEvidence =
+          /\b(?:collect|extract|identify|find|return|retrieve)\b/i.test(description) &&
+          /\b(?:two|three|four|five|multiple|several|\d+\s+(?:distinct\s+)?(?:items?|links?|urls?|results?|options?))\b/i.test(
+            description
+          );
+        if (
+          objective?.status !== "revised" &&
+          requiresCountEvidence &&
+          !(objective?.predicates || []).some((predicate) =>
+            [
+              "evidence_count_at_least",
+              "distinct_url_count_at_least"
+            ].includes(predicate?.type)
+          )
+        ) {
+          errors.push(
+            `${label} requests multiple outputs and needs a count-based evidence predicate.`
+          );
+        }
+        if (
+          /\b(?:filter|sort)\b/i.test(description) &&
+          !/\b(?:filter|sort)\b/i.test(normalizeGoal(plan.goal))
+        ) {
+          errors.push(
+            `${label} introduces a UI filter or sort that the user did not require.`
+          );
+        }
+        if (
+          /\b(?:under|over|below|above|less than|more than|at most|at least)\b/i
+            .test(description) &&
+          (objective?.predicates || []).some(
+            (predicate) =>
+              predicate?.type === "page_text_contains" &&
+              /[$€£]?\d/.test(String(predicate.value || ""))
+          )
+        ) {
+          errors.push(
+            `${label} uses literal page text as proof of a comparative constraint.`
+          );
         }
       }
     }
@@ -347,6 +418,7 @@
     getPlanOutcome,
     isStateChangingTool,
     objectiveActionSatisfied,
+    verifyExpectedState,
     shouldObserveResultingState,
     validateStrategy,
     createRun

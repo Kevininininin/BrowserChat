@@ -10,6 +10,56 @@ BrowserChatTools.define((register) => {
     description:
       "An element reference such as e3 from the most recent observe_page result."
   };
+  const expectedStateProperty = {
+    type: "object",
+    description:
+      "The concrete state that must be present after the click. A DOM change alone is not success.",
+    required: ["type", "value"],
+    properties: {
+      type: {
+        type: "string",
+        enum: [
+          "page_text_contains",
+          "control_present",
+          "control_absent",
+          "url_contains",
+          "control_checked",
+          "control_unchecked"
+        ],
+        description: "How to verify the intended result of the click."
+      },
+      value: {
+        type: "string",
+        description:
+          "Exact identifying text, control label, or URL fragment expected after the click."
+      }
+    }
+  };
+
+  register({
+    schema: {
+      type: "function",
+      function: {
+        name: "navigate_to_url",
+        description:
+          "After explicit user approval, open an explicit HTTP or HTTPS URL in a new active tab and return a compact observation. The current tab is preserved. Prefer this over searching when the destination URL is already known.",
+        parameters: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: {
+              type: "string",
+              description: "The complete HTTP or HTTPS destination URL."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().navigateToUrl(arguments_, context);
+    }
+  });
 
   register({
     schema: {
@@ -17,10 +67,10 @@ BrowserChatTools.define((register) => {
       function: {
         name: "find_and_click",
         description:
-          "Search the live DOM for a visible interactive control by its known label and click it without capturing or serializing the page. Prefer exact labels. The tool refuses ambiguous matches and suggests related labels when possible.",
+          "Search the live DOM for a visible interactive control by its known label and click it. Prefer exact labels. The tool refuses ambiguous matches. Declare the concrete resulting state so a generic DOM mutation is never mistaken for success.",
         parameters: {
           type: "object",
-          required: ["query"],
+          required: ["query", "expectedState"],
           properties: {
             query: {
               type: "string",
@@ -30,7 +80,8 @@ BrowserChatTools.define((register) => {
               type: "string",
               enum: ["exact", "contains"],
               description: "Match mode. Defaults to exact."
-            }
+            },
+            expectedState: expectedStateProperty
           }
         }
       }
@@ -38,6 +89,36 @@ BrowserChatTools.define((register) => {
     execute(arguments_, context) {
       context.signal?.throwIfAborted();
       return getRuntime().findAndClick(arguments_, context);
+    }
+  });
+
+  register({
+    schema: {
+      type: "function",
+      function: {
+        name: "complete_task",
+        description:
+          "Finish the active browser task with the exact user-facing answer and compact evidence from the observed page or completed browser actions. Use this once when the goal is satisfied instead of returning an ordinary final response.",
+        parameters: {
+          type: "object",
+          required: ["answer", "evidence"],
+          properties: {
+            answer: {
+              type: "string",
+              description: "The complete final answer to show to the user."
+            },
+            evidence: {
+              type: "array",
+              description:
+                "Evidence objects with kind url, text, control, or current_url; value; and optional elementRef. Include evidence for every material user constraint, even when the final answer itself is intentionally brief."
+            }
+          }
+        }
+      }
+    },
+    execute(arguments_, context) {
+      context.signal?.throwIfAborted();
+      return getRuntime().completeTask(arguments_, context);
     }
   });
 
@@ -85,7 +166,7 @@ BrowserChatTools.define((register) => {
       function: {
         name: "observe_page",
         description:
-          "Inspect the active webpage and return its visible text and interactive elements. Call this before acting and again after the page changes.",
+          "Inspect the active webpage and return byte-limited viewport text plus compact, canonicalized interactive elements. The runtime supplies the first observation automatically.",
         parameters: {
           type: "object",
           properties: {}
@@ -197,12 +278,13 @@ BrowserChatTools.define((register) => {
       function: {
         name: "click_element",
         description:
-          "Click a button, link, checkbox, radio button, or other clickable element from the latest observation.",
+          "Click an interactive element from the latest observation and verify the intended resulting state. Choose an expected state that proves the next UI state was reached; a generic DOM update is not sufficient.",
         parameters: {
           type: "object",
-          required: ["elementRef"],
+          required: ["elementRef", "expectedState"],
           properties: {
-            elementRef: elementRefProperty
+            elementRef: elementRefProperty,
+            expectedState: expectedStateProperty
           }
         }
       }
@@ -310,7 +392,7 @@ BrowserChatTools.define((register) => {
       function: {
         name: "take_screenshot",
         description:
-          "Capture the visible area of the active browser tab and attach the PNG to the next model round for visual inspection. Requires screenshot permission and a vision-capable model.",
+          "Capture and compress the visible area of the active browser tab for visual inspection. Dense spatial pages may already include an automatic screenshot. Requires screenshot permission and a vision-capable model.",
         parameters: {
           type: "object",
           properties: {}

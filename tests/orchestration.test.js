@@ -9,9 +9,10 @@ const schemas = [
       name: "click_element",
       parameters: {
         type: "object",
-        required: ["elementRef"],
+        required: ["elementRef", "expectedState"],
         properties: {
-          elementRef: { type: "string" }
+          elementRef: { type: "string" },
+          expectedState: { type: "object" }
         }
       }
     }
@@ -73,7 +74,10 @@ test("validates tool arguments against the registered schema", () => {
       {
         function: {
           name: "click_element",
-          arguments: { elementRef: "e3" }
+          arguments: {
+            elementRef: "e3",
+            expectedState: { type: "control_present", value: "Next" }
+          }
         }
       },
       schemas
@@ -82,37 +86,99 @@ test("validates tool arguments against the registered schema", () => {
   );
 });
 
-test("requires approval for consequential controls", () => {
+test("verifies the declared click outcome instead of accepting any DOM update", () => {
+  const before = {
+    page: { url: "https://example.com/current" },
+    visibleText: { inViewport: "Create" },
+    interactiveElements: [{ label: "Create" }]
+  };
+  const observation = {
+    page: { url: "https://example.com/current" },
+    visibleText: { inViewport: "Create Event Task" },
+    interactiveElements: [
+      { label: "Event", checked: false },
+      { label: "Continue", checked: true }
+    ]
+  };
+  assert.equal(
+    orchestration.verifyExpectedState(
+      { type: "control_present", value: "Add title" },
+      observation,
+      before
+    ).verified,
+    false
+  );
+  assert.equal(
+    orchestration.verifyExpectedState(
+      { type: "control_present", value: "Event" },
+      observation,
+      before
+    ).verified,
+    true
+  );
+  assert.equal(
+    orchestration.verifyExpectedState(
+      { type: "control_checked", value: "Continue" },
+      observation,
+      before
+    ).verified,
+    true
+  );
+  assert.equal(
+    orchestration.verifyExpectedState(
+      { type: "url_contains", value: "/expected" },
+      observation,
+      before
+    ).verified,
+    false
+  );
+  assert.equal(
+    orchestration.verifyExpectedState(
+      { type: "page_text_contains", value: "Create" },
+      observation,
+      before
+    ).verified,
+    false,
+    "pre-existing evidence must not prove a click transition"
+  );
+});
+
+test("does not require approval for in-page controls", () => {
   const observationState = {
     elements: new Map([
       ["e3", { label: "Submit application", name: "", kind: "button" }],
       ["e4", { label: "View details", name: "", kind: "link" }]
     ])
   };
-  assert.equal(
-    orchestration.classifyConsequentialAction(
-      {
-        function: {
-          name: "click_element",
-          arguments: { elementRef: "e3" }
-        }
-      },
-      observationState
-    ).consequential,
-    true
+  for (const elementRef of ["e3", "e4"]) {
+    assert.equal(
+      orchestration.classifyConsequentialAction(
+        {
+          function: {
+            name: "click_element",
+            arguments: { elementRef }
+          }
+        },
+        observationState
+      ).consequential,
+      false
+    );
+  }
+});
+
+test("requires approval before opening any direct URL", () => {
+  const result = orchestration.classifyConsequentialAction(
+    {
+      function: {
+        name: "navigate_to_url",
+        arguments: { url: "https://example.com/path" }
+      }
+    },
+    { elements: new Map() }
   );
-  assert.equal(
-    orchestration.classifyConsequentialAction(
-      {
-        function: {
-          name: "click_element",
-          arguments: { elementRef: "e4" }
-        }
-      },
-      observationState
-    ).consequential,
-    false
-  );
+  assert.equal(result.consequential, true);
+  assert.equal(result.category, "open_external_url");
+  assert.match(result.summary, /new tab/i);
 });
 
 test("allows recognized searches without a consequential-action pause", () => {
@@ -141,7 +207,25 @@ test("allows recognized searches without a consequential-action pause", () => {
   assert.equal(result.consequential, false);
 });
 
+test("does not request approval for non-navigation form submission", () => {
+  const result = orchestration.classifyConsequentialAction(
+    {
+      function: {
+        name: "fill_field",
+        arguments: { elementRef: "e1", text: "send this", submit: true }
+      }
+    },
+    {
+      elements: new Map([
+        ["e1", { label: "Message", kind: "textbox", inputType: "text" }]
+      ])
+    }
+  );
+  assert.equal(result.consequential, false);
+});
+
 test("requires a resulting-state observation when an action did not create one", () => {
+  assert.equal(orchestration.isStateChangingTool("navigate_to_url"), true);
   assert.equal(orchestration.isStateChangingTool("select_option"), true);
   assert.equal(orchestration.isStateChangingTool("calculate"), false);
   assert.equal(
@@ -170,6 +254,20 @@ test("requires a resulting-state observation when an action did not create one",
       executionSucceeded: true
     }),
     false
+  );
+});
+
+test("accepts direct navigation as action evidence for navigation objectives", () => {
+  assert.equal(
+    orchestration.objectiveActionSatisfied(
+      {
+        description: "Navigate to the requested website",
+        actionEvidence: null
+      },
+      "navigate_to_url",
+      true
+    ),
+    true
   );
 });
 
@@ -226,6 +324,79 @@ test("rejects strategies without deterministic completion evidence", () => {
   });
   assert.equal(result.valid, false);
   assert.match(result.errors.join(" "), /deterministic completion predicates/);
+});
+
+test("requires count evidence for objectives that request multiple outputs", () => {
+  const invalid = orchestration.validateStrategy({
+    goal: "Return two links",
+    objectives: [
+      {
+        id: "collect-links",
+        description: "Find and return two distinct links",
+        status: "active",
+        predicates: [
+          { type: "page_text_contains", value: "Results" }
+        ]
+      }
+    ]
+  });
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.errors.join(" "), /count-based evidence predicate/);
+
+  const valid = orchestration.validateStrategy({
+    goal: "Return two links",
+    objectives: [
+      {
+        id: "collect-links",
+        description: "Find and return two distinct links",
+        status: "active",
+        predicates: [
+          { type: "distinct_url_count_at_least", value: 2 }
+        ]
+      }
+    ]
+  });
+  assert.equal(valid.valid, true);
+});
+
+test("rejects invalid count predicate targets", () => {
+  const result = orchestration.validateStrategy({
+    goal: "Collect results",
+    objectives: [
+      {
+        id: "collect",
+        description: "Collect several results",
+        status: "active",
+        predicates: [
+          { type: "evidence_count_at_least", value: 0 }
+        ]
+      }
+    ]
+  });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /without a target/);
+});
+
+test("rejects invented UI filters and literal comparative evidence", () => {
+  const inventedFilter = orchestration.validateStrategy({
+    goal: "Find two suitable options",
+    objectives: [
+      {
+        id: "filter",
+        description: "Filter the results under $50",
+        status: "active",
+        predicates: [
+          { type: "page_text_contains", value: "$50" }
+        ]
+      }
+    ]
+  });
+  assert.equal(inventedFilter.valid, false);
+  assert.match(inventedFilter.errors.join(" "), /did not require/);
+  assert.match(
+    inventedFilter.errors.join(" "),
+    /literal page text as proof/
+  );
 });
 
 test("records explicit orchestration phase transitions", () => {

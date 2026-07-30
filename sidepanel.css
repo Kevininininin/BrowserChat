@@ -589,6 +589,10 @@ select {
   text-align: center;
 }
 
+.empty-state[hidden] {
+  display: none;
+}
+
 .empty-icon {
   display: grid;
   place-items: center;
@@ -1207,6 +1211,35 @@ select {
 
 .tool-approval-panel[hidden] {
   display: none;
+}
+
+.chat-approval-panel {
+  width: min(100%, 560px);
+  margin: 10px 0 14px;
+  padding: 14px 15px;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.chat-approval-panel .tool-approval-copy {
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.chat-approval-panel .tool-approval-copy strong {
+  font-size: 14px;
+}
+
+.chat-approval-panel .tool-approval-buttons {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.chat-approval-panel .tool-approval-buttons button {
+  min-height: 36px;
+  padding: 8px 13px;
+  font-size: 12px;
 }
 
 .tool-approval-copy {

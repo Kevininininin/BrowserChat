@@ -236,19 +236,25 @@ attached only when the skill is explicitly or automatically selected.
 ## Tools
 
 BrowserChat provides a `calculate` tool plus a basic browser-agent toolset:
-`get_current_website`, `go_back`, `observe_page`, `find_interactive_elements`, `search_captured_page_text`,
+`get_current_website`, `navigate_to_url`, `go_back`, `observe_page`, `find_interactive_elements`, `search_captured_page_text`,
 `fill_field`, `click_element`, `select_option`, `scroll_page`,
-`take_screenshot`, and `wait_for_page`.
-Browser actions use short-lived element references from the latest compact
-observation and execute one action per orchestration cycle. Browser-control
+`take_screenshot`, `wait_for_page`, and `complete_task`.
+Browser actions use short-lived element references from the latest byte-limited
+compact observation and execute one state-changing action per orchestration cycle. Tracking
+parameters are removed from destinations before they are sent to the model.
+Visually dense pages automatically include a compressed screenshot when the
+selected model supports vision, while forms and text-heavy pages remain DOM-first. Browser-control
 requests receive a validated strategy—even for a single lightweight action—and
 begin with an automatic observation before the model chooses an action.
 `fill_field` can safely submit recognized
 search fields and return the resulting observation. Clicks report navigation,
 control-state, or DOM effects and include a post-click observation. Browser
 tasks receive a structured objective plan with deterministic URL and control
-predicates, bounded retries, schema validation before execution, a resulting-state
+predicates plus generic evidence-count predicates, bounded retries, schema validation before execution, a resulting-state
 observation after every mutating browser action, and conditional replanning.
+Validated completion evidence ends the run without a redundant final-synthesis
+round. Known HTTP and HTTPS destinations can be opened directly without routing
+through a search engine.
 Consequential actions pause in the existing activity panel for an explicit
 one-time approval. The current plan is
 shown above the conversation with completed, active, pending, blocked, and
@@ -257,7 +263,9 @@ before its replacement so the user can follow the revision history. Long page te
 lazily from the latest captured snapshot through the configured local RAG
 settings; this snapshot search never performs a website search or navigation.
 Superseded tool payloads and screenshot images are compacted between model
-rounds. Password fields remain blocked.
+rounds. Ollama is kept warm during the agent loop, and response traces retain
+load, prompt-evaluation, and generation timing when Ollama reports it. Password
+fields remain blocked.
 
 The Activity surface mirrors the chronological orchestration thread, including
 normalized policy, complete system-message injections, strategy changes, model
