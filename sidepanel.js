@@ -189,6 +189,8 @@ const elements = {
   stopSkillRecordingButton: document.querySelector("#stopSkillRecordingButton"),
   recordAgainButton: document.querySelector("#recordAgainButton"),
   compileSkillButton: document.querySelector("#compileSkillButton"),
+  saveRecordedSkillButton: document.querySelector("#saveRecordedSkillButton"),
+  backToSkillReviewButton: document.querySelector("#backToSkillReviewButton"),
   finishRecordSkillButton: document.querySelector("#finishRecordSkillButton"),
   viewRecordedSkillButton: document.querySelector("#viewRecordedSkillButton"),
   recordSkillReadyStatus: document.querySelector("#recordSkillReadyStatus"),
@@ -202,6 +204,12 @@ const elements = {
   recordSkillReviewSummary: document.querySelector("#recordSkillReviewSummary"),
   recordSkillModelSelect: document.querySelector("#recordSkillModelSelect"),
   recordSkillThinkingSelect: document.querySelector("#recordSkillThinkingSelect"),
+  recordSkillDraftEyebrow: document.querySelector("#recordSkillDraftEyebrow"),
+  recordSkillDraftTitle: document.querySelector("#recordSkillDraftTitle"),
+  recordSkillDraftDescription: document.querySelector("#recordSkillDraftDescription"),
+  recordSkillDraftStatus: document.querySelector("#recordSkillDraftStatus"),
+  recordSkillDraftEditor: document.querySelector("#recordSkillDraftEditor"),
+  recordSkillDraftError: document.querySelector("#recordSkillDraftError"),
   recordSkillDoneName: document.querySelector("#recordSkillDoneName"),
   recordSkillDoneDescription: document.querySelector("#recordSkillDoneDescription"),
   recordSkillDoneSteps: document.querySelector("#recordSkillDoneSteps"),
@@ -10419,7 +10427,8 @@ function renderSkillRecorder(state = null) {
   skillRecordingTimer = null;
   if (!visible) return;
 
-  const normalizedStatus = state.status === "compiling" ? "compiling" : state.status;
+  const normalizedStatus = state.status;
+  const visibleStage = normalizedStatus === "editing" ? "compiling" : normalizedStatus;
   const stages = {
     ready: elements.recordSkillReady,
     recording: elements.recordSkillRecording,
@@ -10428,7 +10437,7 @@ function renderSkillRecorder(state = null) {
     done: elements.recordSkillDone
   };
   for (const [status, stage] of Object.entries(stages)) {
-    stage.hidden = status !== normalizedStatus;
+    stage.hidden = status !== visibleStage;
   }
 
   const headerLabels = {
@@ -10436,6 +10445,7 @@ function renderSkillRecorder(state = null) {
     recording: "Capturing actions",
     review: "Ready to compile",
     compiling: "Compiling with Ollama",
+    editing: "Review and edit",
     done: "Skill created"
   };
   elements.recordSkillHeaderStatus.textContent =
@@ -10463,6 +10473,20 @@ function renderSkillRecorder(state = null) {
       `Captured ${count} ${count === 1 ? "action" : "actions"} across ${hostCount || 1} ${hostCount === 1 ? "site" : "sites"}. Choose how Ollama should compile the workflow.`;
     elements.recordSkillCompileStatus.textContent = "";
     syncSkillRecorderModelOptions();
+  }
+  if (normalizedStatus === "compiling" || normalizedStatus === "editing") {
+    const editing = normalizedStatus === "editing";
+    elements.recordSkillDraftEyebrow.textContent = editing ? "Draft complete" : "Working locally";
+    elements.recordSkillDraftTitle.textContent = editing ? "Review your skill" : "Creating your skill";
+    elements.recordSkillDraftDescription.textContent = editing
+      ? "Make any final edits to the Markdown, then save the skill when it looks right."
+      : "Ollama is writing the draft below. You can review and edit it before anything is saved.";
+    elements.recordSkillDraftEditor.value = state.draftMarkdown || "";
+    elements.recordSkillDraftEditor.readOnly = !editing;
+    elements.recordSkillDraftStatus.textContent = editing ? "Ready for your edits" : "Streaming from Ollama…";
+    elements.saveRecordedSkillButton.disabled = !editing;
+    elements.backToSkillReviewButton.disabled = !editing;
+    elements.recordSkillDraftError.textContent = "";
   }
   if (normalizedStatus === "done" && state.createdSkill) {
     elements.recordSkillDoneName.textContent = state.createdSkill.name;
@@ -10570,7 +10594,7 @@ async function compileRecordedSkill() {
 
   elements.compileSkillButton.disabled = true;
   elements.recordSkillCompileStatus.textContent = "";
-  const compilingState = { ...skillRecordingState, status: "compiling" };
+  const compilingState = { ...skillRecordingState, status: "compiling", draftMarkdown: "" };
   await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: compilingState });
   renderSkillRecorder(compilingState);
 
@@ -10616,7 +10640,7 @@ Do not require screenshots or coordinate-only clicks.`;
       body: JSON.stringify({
         model,
         keep_alive: OLLAMA_KEEP_ALIVE,
-        stream: false,
+        stream: true,
         think: elements.recordSkillThinkingSelect.value === "on",
         messages: [
           { role: "system", content: systemPrompt },
@@ -10637,27 +10661,44 @@ Do not require screenshots or coordinate-only clicks.`;
       }
       throw new Error(`Ollama returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
     }
-    const data = await response.json();
-    const markdown = stripSkillMarkdownFence(data.message?.content || "");
-    const candidate = BrowserChatSkills.parseMarkdown(markdown, { source: "local" });
-    const loaded = await BrowserChatSkills.load();
-    const nextSkill = BrowserChatSkills.normalizeSkill({
-      ...candidate,
-      id: undefined,
-      source: "local",
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    });
-    await BrowserChatSkills.saveSkills([...loaded.skills, nextSkill]);
-    const doneState = {
-      ...skillRecordingState,
-      status: "done",
+    if (!response.body) throw new Error("Ollama returned an empty response.");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let markdown = "";
+    const processEvent = (event) => {
+      if (event.error) throw new Error(event.error);
+      const chunk = event.message?.content || "";
+      if (!chunk) return;
+      markdown += chunk;
+      elements.recordSkillDraftEditor.value = markdown;
+      elements.recordSkillDraftEditor.scrollTop = elements.recordSkillDraftEditor.scrollHeight;
+      elements.recordSkillDraftStatus.textContent = `${markdown.length.toLocaleString()} characters generated`;
+    };
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (line.trim()) processEvent(JSON.parse(line));
+      }
+      if (done) {
+        if (buffer.trim()) processEvent(JSON.parse(buffer));
+        break;
+      }
+    }
+    markdown = stripSkillMarkdownFence(markdown);
+    if (!markdown) throw new Error("Ollama did not return a skill draft.");
+    const editingState = {
+      ...compilingState,
+      status: "editing",
       compiledAt: Date.now(),
       compiledWith: { model, thinking: elements.recordSkillThinkingSelect.value === "on" },
-      createdSkill: nextSkill
+      draftMarkdown: markdown
     };
-    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: doneState });
-    renderSkillRecorder(doneState);
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: editingState });
+    renderSkillRecorder(editingState);
   } catch (error) {
     const reviewState = { ...skillRecordingState, status: "review" };
     await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: reviewState });
@@ -10666,6 +10707,38 @@ Do not require screenshots or coordinate-only clicks.`;
       error?.message || "Ollama could not compile this recording.";
   } finally {
     elements.compileSkillButton.disabled = false;
+  }
+}
+
+async function saveRecordedSkillDraft() {
+  const markdown = stripSkillMarkdownFence(elements.recordSkillDraftEditor.value);
+  elements.saveRecordedSkillButton.disabled = true;
+  elements.recordSkillDraftError.textContent = "";
+  try {
+    const candidate = BrowserChatSkills.parseMarkdown(markdown, { source: "local" });
+    const loaded = await BrowserChatSkills.load();
+    const now = Date.now();
+    const nextSkill = BrowserChatSkills.normalizeSkill({
+      ...candidate,
+      id: undefined,
+      source: "local",
+      createdAt: now,
+      updatedAt: now
+    });
+    await BrowserChatSkills.saveSkills([...loaded.skills, nextSkill]);
+    const doneState = {
+      ...skillRecordingState,
+      status: "done",
+      savedAt: now,
+      draftMarkdown: markdown,
+      createdSkill: nextSkill
+    };
+    await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: doneState });
+    renderSkillRecorder(doneState);
+  } catch (error) {
+    elements.recordSkillDraftError.textContent =
+      error?.message || "Check the skill Markdown and try again.";
+    elements.saveRecordedSkillButton.disabled = false;
   }
 }
 
@@ -10693,6 +10766,12 @@ async function closeSkillRecorder({ openSettings = false } = {}) {
 elements.startSkillRecordingButton.addEventListener("click", () => void startSkillRecording());
 elements.stopSkillRecordingButton.addEventListener("click", () => void stopSkillRecording());
 elements.compileSkillButton.addEventListener("click", () => void compileRecordedSkill());
+elements.saveRecordedSkillButton.addEventListener("click", () => void saveRecordedSkillDraft());
+elements.backToSkillReviewButton.addEventListener("click", async () => {
+  const reviewState = { ...skillRecordingState, status: "review" };
+  await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: reviewState });
+  renderSkillRecorder(reviewState);
+});
 elements.recordAgainButton.addEventListener("click", async () => {
   const readyState = { status: "ready", events: [], requestedAt: Date.now() };
   await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: readyState });

@@ -447,10 +447,42 @@ select {
   animation: recordSpin 850ms linear infinite;
 }
 
-#recordSkillCompiling { justify-content: center; text-align: center; }
-#recordSkillCompiling .record-skill-eyebrow { align-self: center; }
-.record-skill-progress { height: 4px; overflow: hidden; background: #e5e5e1; border-radius: 999px; }
-.record-skill-progress span { display: block; width: 38%; height: 100%; background: #7658ab; border-radius: inherit; animation: recordProgress 1.5s ease-in-out infinite; }
+#recordSkillCompiling { padding-top: 28px; }
+.record-skill-draft-wrap {
+  display: flex;
+  min-height: 0;
+  margin-bottom: 16px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.record-skill-draft-heading {
+  display: flex;
+  min-height: 42px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.record-skill-draft-heading strong { font-size: 10px; }
+.record-skill-draft-heading span { color: #7658ab; font-size: 9px; }
+#recordSkillDraftEditor {
+  width: 100%;
+  min-height: 300px;
+  padding: 14px;
+  flex: 1 1 auto;
+  resize: vertical;
+  color: var(--text);
+  font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: #fff;
+  border: 0;
+  outline: none;
+}
+#recordSkillDraftEditor[readonly] { color: #62625e; background: #fafaf8; }
 
 .record-skill-done-card {
   display: flex;
@@ -469,7 +501,6 @@ select {
 @keyframes recordEventIn { from { opacity: 0; transform: translateY(5px); } }
 @keyframes listening { to { height: 15px; opacity: .45; } }
 @keyframes recordSpin { to { transform: rotate(360deg); } }
-@keyframes recordProgress { 0% { transform: translateX(-110%); } 100% { transform: translateX(300%); } }
 
 .topbar {
   position: sticky;

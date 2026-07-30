@@ -379,13 +379,19 @@
         </section>
 
         <section id="recordSkillCompiling" class="record-skill-stage" hidden>
-          <div class="record-skill-spinner" aria-hidden="true"></div>
-          <span class="record-skill-eyebrow">Working locally</span>
-          <h1>Creating your skill</h1>
-          <p>Ollama is turning the action sequence into a reusable workflow with inputs, stable targets, and checks.</p>
-          <div class="record-skill-progress">
-            <span></span>
+          <span id="recordSkillDraftEyebrow" class="record-skill-eyebrow">Working locally</span>
+          <h1 id="recordSkillDraftTitle">Creating your skill</h1>
+          <p id="recordSkillDraftDescription">Ollama is writing the draft below. You can review and edit it before anything is saved.</p>
+          <div class="record-skill-draft-wrap">
+            <div class="record-skill-draft-heading">
+              <strong>Skill preview</strong>
+              <span id="recordSkillDraftStatus" role="status" aria-live="polite">Waiting for output…</span>
+            </div>
+            <textarea id="recordSkillDraftEditor" aria-label="Generated skill Markdown preview" readonly spellcheck="false"></textarea>
           </div>
+          <button id="saveRecordedSkillButton" class="record-skill-primary-button" type="button" disabled>Save skill</button>
+          <button id="backToSkillReviewButton" class="record-skill-text-button" type="button" disabled>Back</button>
+          <p id="recordSkillDraftError" class="record-skill-status" role="alert"></p>
         </section>
 
         <section id="recordSkillDone" class="record-skill-stage" hidden>
