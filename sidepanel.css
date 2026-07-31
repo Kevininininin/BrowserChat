@@ -479,6 +479,17 @@ select {
 
 .record-skill-compile-note { margin-bottom: 20px; background: #f3f1f8; border-color: #e2dced; }
 .record-skill-compile-note svg { color: #6a4d9b; }
+.record-skill-export-actions {
+  display: grid;
+  margin-top: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.record-skill-export-actions .record-skill-text-button {
+  padding: 0 8px;
+  color: #674b99;
+  border: 1px solid #ded8e9;
+}
 
 .record-skill-spinner {
   width: 42px;

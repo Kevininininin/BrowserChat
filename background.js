@@ -50,6 +50,7 @@ function sanitizeRecordedEvent(value = {}) {
         selector: String(value.target.selector || "").slice(0, 500),
         type: String(value.target.type || "").slice(0, 80),
         href: sanitizeRecordedUrl(value.target.href).slice(0, 1000),
+        value: String(value.target.value || "").slice(0, 1000),
         checked:
           typeof value.target.checked === "boolean"
             ? value.target.checked
@@ -58,14 +59,22 @@ function sanitizeRecordedEvent(value = {}) {
     : null;
   return {
     id: crypto.randomUUID(),
-    kind: ["click", "change", "submit", "navigation", "keypress"].includes(value.kind)
+    kind: ["click", "change", "submit", "navigation", "keypress", "scroll"].includes(value.kind)
       ? value.kind
       : "action",
     timestamp: Date.now(),
     pageUrl: sanitizeRecordedUrl(value.pageUrl).slice(0, 2000),
     pageTitle: String(value.pageTitle || "").slice(0, 300),
     hostname: String(value.hostname || "").slice(0, 300),
-    target
+    target,
+    details: value.details && typeof value.details === "object"
+      ? {
+          scrollTop: Math.max(0, Number(value.details.scrollTop) || 0),
+          scrollLeft: Math.max(0, Number(value.details.scrollLeft) || 0),
+          percent: Math.min(100, Math.max(0, Number(value.details.percent) || 0)),
+          direction: value.details.direction === "up" ? "up" : "down"
+        }
+      : null
   };
 }
 

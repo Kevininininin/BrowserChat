@@ -146,14 +146,21 @@
       if (!manifestResponse.ok) throw new Error("Skill manifest is unavailable.");
       const manifest = await manifestResponse.json();
       const paths = Array.isArray(manifest.skills) ? manifest.skills : [];
-      const packaged = await Promise.all(paths.map(async (sourcePath) => {
-        const response = await fetch(chrome.runtime.getURL(sourcePath));
-        if (!response.ok) throw new Error(`Could not load ${sourcePath}.`);
-        return parseMarkdown(await response.text(), {
-          source: "packaged",
-          sourcePath
-        });
-      }));
+      const packaged = (
+        await Promise.all(paths.map(async (sourcePath) => {
+          try {
+            const response = await fetch(chrome.runtime.getURL(sourcePath));
+            if (!response.ok) throw new Error(`Could not load ${sourcePath}.`);
+            return parseMarkdown(await response.text(), {
+              source: "packaged",
+              sourcePath
+            });
+          } catch (error) {
+            console.warn(`Packaged skill "${sourcePath}" could not be loaded.`, error);
+            return null;
+          }
+        }))
+      ).filter(Boolean);
       return [
         ...defaults.map((skill) => ({ ...skill, source: "packaged" })),
         ...packaged

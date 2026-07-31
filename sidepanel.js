@@ -189,6 +189,8 @@ const elements = {
   stopSkillRecordingButton: document.querySelector("#stopSkillRecordingButton"),
   recordAgainButton: document.querySelector("#recordAgainButton"),
   compileSkillButton: document.querySelector("#compileSkillButton"),
+  downloadSkillCompilationBundleButton: document.querySelector("#downloadSkillCompilationBundleButton"),
+  downloadSkillRecordingLogButton: document.querySelector("#downloadSkillRecordingLogButton"),
   saveRecordedSkillButton: document.querySelector("#saveRecordedSkillButton"),
   backToSkillReviewButton: document.querySelector("#backToSkillReviewButton"),
   finishRecordSkillButton: document.querySelector("#finishRecordSkillButton"),
@@ -10353,6 +10355,7 @@ function recordedActionLabel(event = {}) {
   if (event.kind === "submit") return `Submitted ${name || "a form"}`;
   if (event.kind === "change") return `Changed ${name || "a field"}`;
   if (event.kind === "keypress") return `Pressed Enter in ${name || "a control"}`;
+  if (event.kind === "scroll") return `Scrolled ${event.details?.direction || "the page"}`;
   return `Clicked ${name || "an element"}`;
 }
 
@@ -10366,7 +10369,11 @@ function recordedActionDetail(event = {}) {
   }
   const details = [
     event.target?.role || event.target?.tag,
-    event.target?.selector
+    event.target?.selector,
+    event.target?.value && event.target.value !== "[REDACTED]"
+      ? `Value: ${event.target.value}`
+      : "",
+    event.kind === "scroll" ? `${event.details?.percent || 0}% down` : ""
   ].filter(Boolean);
   return details.join(" · ") || event.hostname || "Browser action";
 }
@@ -10591,6 +10598,134 @@ function stripSkillMarkdownFence(value = "") {
     .trim();
 }
 
+function compactSkillRecordingEvents(events = skillRecordingState?.events || []) {
+  return events.slice(0, 500).map((event, index) => ({
+    step: index + 1,
+    kind: event.kind,
+    url: event.pageUrl,
+    title: event.pageTitle,
+    site: event.hostname,
+    target: event.target,
+    details: event.details || undefined
+  }));
+}
+
+function skillCompilationSystemPrompt() {
+  return `You create reliable, reusable BrowserChat skills from a structured browser-action recording.
+Return only valid Markdown with this exact shape:
+---
+name: "Short action-oriented name"
+description: "One sentence describing when this skill applies and its outcome"
+---
+
+# Goal
+...
+
+# Inputs
+- ...
+
+# Tool Strategy
+- Name the preferred available tool for each operation and when to use it.
+- Name a fallback when the preferred tool cannot observe or manipulate the target.
+
+# Steps
+1. ...
+
+# Verification
+- ...
+
+Use the recording as evidence of the intended workflow, not as a demand to reproduce every incidental click or scroll.
+Generalize user-specific or changing values into named inputs and placeholders.
+Map every consequential step to a specific available tool, stable semantic target, expected result, and recovery path.
+Prefer connector/API tools for structured applications and data. Use browser UI tools only when a semantic integration is unavailable or visual interaction is essential.
+Never invent a tool. If the catalog lacks a required capability, state the limitation and the safest fallback in the skill.
+Prefer stable semantic targets (visible label, role, accessible name, sheet/tab name, column header, URL pattern, or data attribute) over brittle CSS paths.
+For tables and spreadsheets, specify the exact sheet/tab, column-to-input mapping, how to find the target row, dropdown behavior, and post-write verification.
+Include starting page requirements, navigation, action order, expected state after important steps, and final persistence verification.
+Recorded text values reveal field purpose and mapping; generalize changing values into inputs rather than hard-coding them.
+If typed content is redacted, infer its purpose from the field label and make it a required skill input.
+Never invent or expose passwords, tokens, payment data, or other secrets.
+Do not require coordinate-only clicks.`;
+}
+
+function skillCompilationUserPrompt() {
+  const userIntent = {
+    suggestedTitle: skillRecordingState?.suggestedTitle || "",
+    suggestedDescription: skillRecordingState?.suggestedDescription || ""
+  };
+  const availableTools = BrowserChatTools.getSchemas().map((schema) => ({
+    name: schema.function?.name || "",
+    description: schema.function?.description || "",
+    parameters: schema.function?.parameters || {}
+  }));
+  return `Compile this local recording into one reusable skill.
+
+User-provided intent (optional suggestions; use them to understand the goal, but improve or generalize them when the recording supports a more reusable skill):
+${JSON.stringify(userIntent, null, 2)}
+
+Available BrowserChat tools (use these exact names; do not invent tools):
+${JSON.stringify(availableTools, null, 2)}
+
+Recording log:
+${JSON.stringify(compactSkillRecordingEvents(), null, 2)}`;
+}
+
+function downloadTextFile(contents, filename, type = "text/plain") {
+  const url = URL.createObjectURL(new Blob([contents], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function recordedSkillExportSlug() {
+  return (skillRecordingState?.suggestedTitle || "recorded-skill")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "recorded-skill";
+}
+
+function downloadSkillCompilationBundle() {
+  const bundle = `# External AI skill compilation bundle
+
+Use the system and user prompts below to compile a BrowserChat skill. Return the completed SKILL.md only.
+
+## System prompt
+
+${skillCompilationSystemPrompt()}
+
+## User prompt
+
+${skillCompilationUserPrompt()}
+`;
+  downloadTextFile(bundle, `${recordedSkillExportSlug()}-ai-compilation-bundle.md`, "text/markdown");
+}
+
+function downloadSkillRecordingLog() {
+  const log = {
+    schema: "browserchat.skill-recording.v1",
+    exportedAt: new Date().toISOString(),
+    intent: {
+      suggestedTitle: skillRecordingState?.suggestedTitle || "",
+      suggestedDescription: skillRecordingState?.suggestedDescription || ""
+    },
+    recording: {
+      startedAt: skillRecordingState?.startedAt,
+      endedAt: skillRecordingState?.endedAt,
+      events: compactSkillRecordingEvents()
+    }
+  };
+  downloadTextFile(
+    `${JSON.stringify(log, null, 2)}\n`,
+    `${recordedSkillExportSlug()}-recording-log.json`,
+    "application/json"
+  );
+}
+
 async function compileRecordedSkill() {
   const model = elements.recordSkillModelSelect.value;
   const events = skillRecordingState?.events || [];
@@ -10606,46 +10741,9 @@ async function compileRecordedSkill() {
   await chrome.storage.local.set({ [SKILL_RECORDING_STORAGE_KEY]: compilingState });
   renderSkillRecorder(compilingState);
 
-  const systemPrompt = `You create reusable BrowserChat skills from a structured browser-action recording.
-Return only valid Markdown with this exact shape:
----
-name: "Short action-oriented name"
-description: "One sentence describing when this skill applies and its outcome"
----
-
-# Goal
-...
-
-# Inputs
-- ...
-
-# Steps
-1. ...
-
-# Verification
-- ...
-
-Use the recording as evidence of the intended workflow, not as a demand to reproduce every incidental click.
-Generalize user-specific or changing values into named inputs and placeholders.
-Prefer stable semantic targets (visible label, role, accessible name, URL pattern, or data attribute) over brittle CSS paths.
-Include the starting site/page requirements, navigation, action order, expected state after important steps, and a final verification.
-If typed content was redacted, infer the input's purpose from its label and make its value a required skill input.
-Never invent or expose passwords, tokens, payment data, or other secrets.
-Do not require screenshots or coordinate-only clicks.`;
+  const systemPrompt = skillCompilationSystemPrompt();
 
   try {
-    const compactEvents = events.slice(0, 350).map((event, index) => ({
-      step: index + 1,
-      kind: event.kind,
-      url: event.pageUrl,
-      title: event.pageTitle,
-      site: event.hostname,
-      target: event.target
-    }));
-    const userIntent = {
-      suggestedTitle: skillRecordingState?.suggestedTitle || "",
-      suggestedDescription: skillRecordingState?.suggestedDescription || ""
-    };
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -10658,14 +10756,7 @@ Do not require screenshots or coordinate-only clicks.`;
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content:
-              `Compile this local recording into one reusable skill.
-
-User-provided intent (optional suggestions; use them to understand the goal, but improve or generalize them when the recording supports a more reusable skill):
-${JSON.stringify(userIntent, null, 2)}
-
-Recording log:
-${JSON.stringify(compactEvents, null, 2)}`
+            content: skillCompilationUserPrompt()
           }
         ]
       })
@@ -10784,6 +10875,8 @@ async function closeSkillRecorder({ openSettings = false } = {}) {
 elements.startSkillRecordingButton.addEventListener("click", () => void startSkillRecording());
 elements.stopSkillRecordingButton.addEventListener("click", () => void stopSkillRecording());
 elements.compileSkillButton.addEventListener("click", () => void compileRecordedSkill());
+elements.downloadSkillCompilationBundleButton.addEventListener("click", downloadSkillCompilationBundle);
+elements.downloadSkillRecordingLogButton.addEventListener("click", downloadSkillRecordingLog);
 elements.saveRecordedSkillButton.addEventListener("click", () => void saveRecordedSkillDraft());
 elements.backToSkillReviewButton.addEventListener("click", async () => {
   const reviewState = { ...skillRecordingState, status: "review" };

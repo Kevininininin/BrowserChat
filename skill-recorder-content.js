@@ -4,16 +4,12 @@
   const sensitiveTypes = new Set([
     "password",
     "email",
-    "tel",
-    "number",
-    "date",
-    "datetime-local",
-    "month",
-    "week",
-    "time"
+    "tel"
   ]);
   const listeners = [];
   let lastInputTarget = null;
+  let scrollTimer = null;
+  let lastScrollTop = 0;
 
   function listen(target, type, handler, options) {
     target.addEventListener(type, handler, options);
@@ -97,13 +93,21 @@
       : null;
     if (!element) return null;
     const type = cleanText(element.getAttribute("type")).toLowerCase();
-    const editableText = element.isContentEditable;
     const sensitive =
-      editableText ||
       sensitiveTypes.has(type) ||
-      /pass(word)?|secret|token|otp|one.?time|card|cvv|cvc|ssn|social.?security/i.test(
-        `${element.getAttribute("name") || ""} ${element.id || ""} ${element.getAttribute("autocomplete") || ""}`
+      /pass(word)?|secret|token|otp|one.?time|card|cvv|cvc|ssn|social.?security|api.?key|auth/i.test(
+        `${element.getAttribute("name") || ""} ${element.id || ""} ${element.getAttribute("autocomplete") || ""} ${element.getAttribute("aria-label") || ""}`
       );
+    let recordedValue;
+    if (sensitive) {
+      recordedValue = "[REDACTED]";
+    } else if (element instanceof HTMLSelectElement) {
+      recordedValue = cleanText(element.selectedOptions[0]?.textContent || element.value, 1000);
+    } else if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      recordedValue = cleanText(element.value, 1000);
+    } else if (element.isContentEditable) {
+      recordedValue = cleanText(element.innerText || element.textContent, 1000);
+    }
     return {
       tag: element.localName,
       role: cleanText(element.getAttribute("role")),
@@ -118,13 +122,14 @@
       selector: stableSelector(element),
       type: type || cleanText(element.getAttribute("aria-role")),
       href: element.closest("a[href]") ? safeUrl(element.closest("a[href]").href) : "",
+      ...(recordedValue !== undefined ? { value: recordedValue } : {}),
       ...(element.matches('input[type="checkbox"],input[type="radio"]')
         ? { checked: element.checked }
         : {})
     };
   }
 
-  function emit(kind, target = null) {
+  function emit(kind, target = null, details = null) {
     void chrome.runtime.sendMessage({
       type: "browserchat.skillRecorder.event",
       event: {
@@ -132,7 +137,8 @@
         pageUrl: safeUrl(location.href),
         pageTitle: cleanText(document.title, 300),
         hostname: location.hostname,
-        target: target ? describeTarget(target) : null
+        target: target ? describeTarget(target) : null,
+        details
       }
     }).catch(() => {});
   }
@@ -174,6 +180,27 @@
     emit("navigation");
   }
 
+  function onScroll(event) {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      const target = event.target === document
+        ? document.scrollingElement
+        : event.target;
+      const scrollTop = Number(target?.scrollTop || globalThis.scrollY || 0);
+      const scrollLeft = Number(target?.scrollLeft || globalThis.scrollX || 0);
+      const scrollHeight = Number(target?.scrollHeight || document.documentElement.scrollHeight || 0);
+      const clientHeight = Number(target?.clientHeight || globalThis.innerHeight || 0);
+      const maxScroll = Math.max(0, scrollHeight - clientHeight);
+      emit("scroll", target, {
+        scrollTop: Math.round(scrollTop),
+        scrollLeft: Math.round(scrollLeft),
+        percent: maxScroll ? Math.round((scrollTop / maxScroll) * 100) : 0,
+        direction: scrollTop >= lastScrollTop ? "down" : "up"
+      });
+      lastScrollTop = scrollTop;
+    }, 350);
+  }
+
   const originalPushState = history.pushState;
   const originalReplaceState = history.replaceState;
   history.pushState = function (...args) {
@@ -193,10 +220,12 @@
   listen(document, "focusout", onFocusOut, true);
   listen(document, "submit", onSubmit, true);
   listen(document, "keydown", onKeyDown, true);
+  listen(document, "scroll", onScroll, true);
   listen(globalThis, "popstate", onNavigation);
   listen(globalThis, "hashchange", onNavigation);
 
   function stop() {
+    clearTimeout(scrollTimer);
     for (const remove of listeners.splice(0)) remove();
     history.pushState = originalPushState;
     history.replaceState = originalReplaceState;

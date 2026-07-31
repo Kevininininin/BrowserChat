@@ -35,14 +35,19 @@ test("side panel includes ready, recording, compilation, and success stages", ()
   assert.match(html, /id="recordSkillSuggestedDescription"[\s\S]*maxlength="600"/);
   assert.match(html, /id="recordSkillDraftEditor"[\s\S]*readonly/);
   assert.match(html, /id="saveRecordedSkillButton"/);
+  assert.match(html, /id="downloadSkillCompilationBundleButton"/);
+  assert.match(html, /id="downloadSkillRecordingLogButton"/);
   assert.match(html, /id="recordSkillEventList"[\s\S]*aria-live="polite"/);
 });
 
-test("recorder excludes typed values and strips sensitive URL parts", () => {
+test("recorder captures workflow values and scrolls while protecting sensitive fields", () => {
   const contentSource = read("skill-recorder-content.js");
   const backgroundSource = read("background.js");
 
-  assert.doesNotMatch(contentSource, /\.value\b/);
+  assert.match(contentSource, /recordedValue/);
+  assert.match(contentSource, /"\[REDACTED\]"/);
+  assert.match(contentSource, /onScroll/);
+  assert.match(contentSource, /emit\("scroll"/);
   assert.match(contentSource, /sensitiveTypes/);
   assert.match(contentSource, /element\.isContentEditable/);
   assert.match(backgroundSource, /url\.username = ""/);
@@ -66,4 +71,7 @@ test("compilation asks for reusable inputs, stable targets, and verification", (
   assert.match(source, /User-provided intent \(optional suggestions/);
   assert.match(source, /suggestedTitle/);
   assert.match(source, /suggestedDescription/);
+  assert.match(source, /# Tool Strategy/);
+  assert.match(source, /Available BrowserChat tools/);
+  assert.match(source, /downloadSkillCompilationBundle/);
 });
